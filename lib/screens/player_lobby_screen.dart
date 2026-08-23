@@ -4,6 +4,7 @@ import '../models/player.dart';
 import '../models/room.dart';
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
+import '../services/sound_service.dart';
 import '../theme.dart';
 import '../widgets/answer_button.dart';
 import '../widgets/countdown_timer.dart';
@@ -182,14 +183,34 @@ class _QuestionView extends StatelessWidget {
   }
 }
 
-class _RevealView extends StatelessWidget {
+class _RevealView extends StatefulWidget {
   final Room room;
   final Player? me;
 
   const _RevealView({required this.room, required this.me});
 
   @override
+  State<_RevealView> createState() => _RevealViewState();
+}
+
+class _RevealViewState extends State<_RevealView> {
+  @override
+  void initState() {
+    super.initState();
+    final justEliminated =
+        widget.me?.eliminatedAtQuestion == widget.room.currentQuestionIndex;
+    final stillAlive = widget.me?.alive ?? false;
+    if (justEliminated) {
+      SoundService.instance.play(GameSound.wrong);
+    } else if (stillAlive) {
+      SoundService.instance.play(GameSound.correct);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final room = widget.room;
+    final me = widget.me;
     final question = room.currentQuestion!;
     final justEliminated =
         me?.eliminatedAtQuestion == room.currentQuestionIndex;

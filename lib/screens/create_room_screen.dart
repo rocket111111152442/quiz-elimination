@@ -1,15 +1,29 @@
 import 'package:flutter/material.dart';
 
+import '../data/question_bank.dart';
 import '../models/question.dart';
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import 'host_lobby_screen.dart';
+import 'question_bank_screen.dart';
 
 class _QuestionDraft {
   final textController = TextEditingController();
   final optionControllers = List.generate(4, (_) => TextEditingController());
   int correctIndex = 0;
   int timeLimitSeconds = 20;
+
+  _QuestionDraft();
+
+  factory _QuestionDraft.fromBank(BankQuestion question) {
+    final draft = _QuestionDraft();
+    draft.textController.text = question.text;
+    for (var i = 0; i < 4; i++) {
+      draft.optionControllers[i].text = question.options[i];
+    }
+    draft.correctIndex = question.correctIndex;
+    return draft;
+  }
 
   void dispose() {
     textController.dispose();
@@ -38,7 +52,7 @@ class CreateRoomScreen extends StatefulWidget {
 }
 
 class _CreateRoomScreenState extends State<CreateRoomScreen> {
-  final List<_QuestionDraft> _drafts = [_QuestionDraft()];
+  final List<_QuestionDraft> _drafts = [];
   final _roomService = RoomService();
   final _authService = AuthService();
   bool _loading = false;
@@ -55,13 +69,29 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
   void _addQuestion() => setState(() => _drafts.add(_QuestionDraft()));
 
   void _removeQuestion(int index) {
-    if (_drafts.length == 1) return;
     setState(() {
       _drafts.removeAt(index).dispose();
     });
   }
 
+  Future<void> _openQuestionBank() async {
+    final selected = await Navigator.of(context).push<List<BankQuestion>>(
+      MaterialPageRoute(builder: (_) => const QuestionBankScreen()),
+    );
+    if (selected == null || selected.isEmpty) return;
+    setState(() {
+      _drafts.addAll(selected.map(_QuestionDraft.fromBank));
+      _error = null;
+    });
+  }
+
   Future<void> _createRoom() async {
+    if (_drafts.isEmpty) {
+      setState(
+        () => _error = 'Ajoute au moins une question avant de lancer la salle.',
+      );
+      return;
+    }
     if (_drafts.any((d) => !d.isValid)) {
       setState(
         () =>
@@ -99,18 +129,29 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
         child: Column(
           children: [
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: _drafts.length,
-                itemBuilder: (context, index) => _QuestionCard(
-                  index: index,
-                  draft: _drafts[index],
-                  onRemove: _drafts.length > 1
-                      ? () => _removeQuestion(index)
-                      : null,
-                  onChanged: () => setState(() {}),
-                ),
-              ),
+              child: _drafts.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'Aucune question pour l\'instant.\nPioche dans la banque ou ajoutes-en une toi-même.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _drafts.length,
+                      itemBuilder: (context, index) => _QuestionCard(
+                        index: index,
+                        draft: _drafts[index],
+                        onRemove: () => _removeQuestion(index),
+                        onChanged: () => setState(() {}),
+                      ),
+                    ),
             ),
             if (_error != null)
               Padding(
@@ -121,7 +162,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: Row(
                 children: [
                   Expanded(
@@ -132,19 +173,28 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    flex: 2,
-                    child: ElevatedButton(
-                      onPressed: _loading ? null : _createRoom,
-                      child: _loading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Lancer la salle'),
+                    child: OutlinedButton(
+                      onPressed: _openQuestionBank,
+                      child: const Text('Banque de questions'),
                     ),
                   ),
                 ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _createRoom,
+                  child: _loading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Lancer la salle'),
+                ),
               ),
             ),
           ],

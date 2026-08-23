@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/player.dart';
 import '../models/room.dart';
 import '../services/room_service.dart';
+import '../services/sound_service.dart';
 import '../theme.dart';
 import '../widgets/player_list_tile.dart';
 import '../widgets/results_view.dart';
@@ -57,9 +58,10 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
                       loading: _actionInFlight,
                       onStart: players.isEmpty
                           ? null
-                          : () => _guardedAction(
-                              () => _roomService.startGame(widget.code),
-                            ),
+                          : () => _guardedAction(() async {
+                              await SoundService.instance.play(GameSound.start);
+                              await _roomService.startGame(widget.code);
+                            }),
                     );
                   case RoomStatus.question:
                     return _QuestionView(

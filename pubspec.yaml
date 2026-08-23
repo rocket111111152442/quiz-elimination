@@ -37,6 +37,8 @@ dependencies:
   firebase_core: ^4.13.0
   cloud_firestore: ^6.8.0
   firebase_auth: ^6.5.7
+  audioplayers: ^6.8.1
+  google_mobile_ads: ^9.1.0
 
 dev_dependencies:
   flutter_test:
@@ -59,6 +61,12 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/sfx/
+
+  # Pour ta musique de fond (ex: export Suno) : dépose le fichier dans
+  # assets/music/, puis ajoute "- assets/music/" ci-dessus.
 
   # To add assets to your application, add an assets section, like this:
   # assets:

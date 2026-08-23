@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../services/sound_service.dart';
+
 class CountdownTimer extends StatefulWidget {
   final DateTime startedAt;
   final int durationSeconds;
@@ -21,6 +23,7 @@ class CountdownTimer extends StatefulWidget {
 class _CountdownTimerState extends State<CountdownTimer> {
   late Timer _ticker;
   bool _expiredFired = false;
+  int? _lastTickedSecond;
 
   @override
   void initState() {
@@ -49,6 +52,10 @@ class _CountdownTimerState extends State<CountdownTimer> {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => widget.onExpired?.call(),
       );
+    }
+    if (remaining > 0 && remaining <= 3 && remaining != _lastTickedSecond) {
+      _lastTickedSecond = remaining;
+      SoundService.instance.play(GameSound.tick);
     }
     final urgent = remaining <= 5;
     return Text(

@@ -69,7 +69,73 @@ affiché côté hôte).
    jusqu'à ce qu'il ne reste qu'un·e joueur·se — l'écran de résultats
    affiche alors le classement final.
 
-## 4. Publier sur le Google Play Store
+Pour composer le quiz, l'hôte peut soit écrire ses propres questions
+(**+ Question**), soit piocher dans la **banque de questions** intégrée
+(environ 190 questions prêtes à l'emploi, réparties en 10 catégories :
+culture générale, géographie, histoire, sciences, sport, cinéma, séries,
+musique, jeux vidéo, nature & animaux) — les deux se mélangent librement
+dans la même salle, et chaque question ajoutée reste modifiable ou
+supprimable avant de lancer la partie.
+
+## 4. Son et musique
+
+Quatre petits effets sonores (validation, erreur, décompte, démarrage de
+partie) sont déjà inclus dans `assets/sfx/`. Pour ajouter une musique de
+fond (par exemple un morceau généré avec Suno) :
+
+1. Exporte ton morceau en `.mp3` et nomme-le `theme.mp3`.
+2. Dépose-le dans `assets/music/theme.mp3` (crée le dossier si besoin).
+3. Dans `pubspec.yaml`, sous la section `flutter: assets:`, ajoute la ligne
+   `- assets/music/`.
+4. Relance `flutter pub get` puis `flutter run` — la musique se lance
+   automatiquement en boucle sur l'écran d'accueil.
+
+## 5. Publicités (AdMob)
+
+Une bannière discrète s'affiche sur l'écran de résultats (jamais pendant
+une question, pour ne pas gêner le jeu). Le projet utilise pour l'instant
+les **ID de test officiels de Google** (`lib/services/ad_service.dart` et
+`android/app/src/main/AndroidManifest.xml`) : ça fonctionne déjà tel quel
+en développement, mais ne rapporte pas d'argent réel.
+
+Pour passer en production :
+1. Crée un compte [Google AdMob](https://admob.google.com) (gratuit).
+2. Crée une appli AdMob puis une unité publicitaire "Bannière".
+3. Remplace `bannerAdUnitId` dans `lib/services/ad_service.dart` et
+   `com.google.android.gms.ads.APPLICATION_ID` dans
+   `android/app/src/main/AndroidManifest.xml` par tes vrais ID.
+4. Dans la Play Console, déclare l'audience de l'appli (probablement des
+   mineurs si c'est pour une classe) — cela active automatiquement les
+   règles Google adaptées (pas de publicité personnalisée pour les
+   mineurs, etc.). Voir la [politique familles de Google Play](https://support.google.com/googleplay/android-developer/answer/9893335).
+
+## 6. Paiements et idées de monétisation
+
+Aucun paiement n'est câblé pour l'instant — mieux vaut ça qu'un faux
+bouton "Payer" qui ne marche pas. Le chemin recommandé pour ajouter de
+vrais achats :
+
+1. Crée un [compte marchand Google Play](https://support.google.com/googleplay/android-developer/answer/9269274)
+   (nécessite le compte développeur payant de l'étape 7).
+2. Dans la Play Console, crée tes "produits" (achats intégrés) : un ID,
+   un nom, un prix.
+3. Ajoute le package [`in_app_purchase`](https://pub.dev/packages/in_app_purchase)
+   au projet et branche-le sur les ID de produits créés à l'étape 2.
+
+Idées de monétisation adaptées à ce type de jeu, sans rien qui pénalise
+l'expérience de base :
+- **Retirer les pubs** (achat unique) — l'option la plus simple et la
+  mieux perçue.
+- **Packs de questions premium** (par thème, ou questions créées par la
+  communauté) en plus de la banque gratuite déjà incluse.
+- **Thèmes visuels** ou animations de victoire supplémentaires
+  (cosmétique, n'affecte jamais qui gagne).
+
+À éviter si le public reste en grande partie mineur : rien qui ressemble
+à une mécanique de type loot box, et aucune pression à payer pour
+continuer à jouer.
+
+## 7. Publier sur le Google Play Store
 
 1. Crée un compte [Google Play Console](https://play.google.com/console)
    (25 $, paiement unique).
@@ -94,10 +160,15 @@ affiché côté hôte).
 
 ```
 lib/
+  data/         # question_bank.dart — les ~190 questions prêtes à l'emploi
   models/       # Question, Room, Player (structures de données)
-  services/     # AuthService (connexion anonyme), RoomService (Firestore)
-  screens/      # Home, création/rejoindre salle, écrans hôte/joueur
-  widgets/      # Boutons de réponse, minuteur, liste de joueurs, résultats
+  services/     # AuthService, RoomService (Firestore), SoundService, AdService
+  screens/      # Home, création/rejoindre salle, banque de questions,
+                # écrans hôte/joueur
+  widgets/      # Boutons de réponse, minuteur, liste de joueurs, résultats,
+                # bannière publicitaire
+assets/sfx/     # Effets sonores (générés, libres de droits)
+assets/music/   # Ta musique de fond (à ajouter toi-même, voir section 4)
 firestore.rules # Règles de sécurité (seul l'hôte contrôle la partie,
                 # chaque joueur ne peut écrire que sa propre réponse)
 ```

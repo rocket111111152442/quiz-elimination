@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/player.dart';
 import '../theme.dart';
+import 'banner_ad_widget.dart';
 
 /// Shared final leaderboard, used by both the host and player screens so
 /// the ranking logic only lives in one place.
@@ -53,7 +54,10 @@ class ResultsView extends StatelessWidget {
                 final isMe = player.uid == highlightUid;
                 return ListTile(
                   tileColor: isMe ? AppColors.surface : null,
-                  leading: CircleAvatar(child: Text('${index + 1}')),
+                  leading: CircleAvatar(
+                    backgroundColor: _medalColor(index) ?? AppColors.surface,
+                    child: Text('${index + 1}'),
+                  ),
                   title: Text(
                     isMe ? '${player.name} (toi)' : player.name,
                     style: TextStyle(fontWeight: isMe ? FontWeight.bold : null),
@@ -65,8 +69,23 @@ class ResultsView extends StatelessWidget {
               },
             ),
           ),
+          const SizedBox(height: 8),
+          const BannerAdWidget(),
         ],
       ),
     );
+  }
+
+  Color? _medalColor(int rank) {
+    switch (rank) {
+      case 0:
+        return const Color(0xFFD4AF37);
+      case 1:
+        return const Color(0xFFB0B7BD);
+      case 2:
+        return const Color(0xFFCD7F32);
+      default:
+        return null;
+    }
   }
 }
