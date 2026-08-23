@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import '../theme.dart';
 import '../widgets/inactivity_badge.dart';
+import '../widgets/leave_game_button.dart';
 import '../widgets/undercover_results_view.dart';
 
 /// Single reactive screen driving the whole Undercover game for a player:
@@ -78,7 +79,25 @@ class _UndercoverPlayerScreenState extends State<UndercoverPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Salle ${widget.code}')),
+      appBar: AppBar(
+        title: Text('Salle ${widget.code}'),
+        actions: [
+          StreamBuilder<UndercoverRoom?>(
+            stream: _roomService.undercoverRoomStream(widget.code),
+            builder: (context, roomSnap) {
+              final status = roomSnap.data?.status;
+              if (status != UndercoverStatus.clue &&
+                  status != UndercoverStatus.voting) {
+                return const SizedBox.shrink();
+              }
+              return LeaveGameButton(
+                onConfirmed: () =>
+                    _roomService.leaveUndercoverGame(widget.code, _uid),
+              );
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         child: StreamBuilder<UndercoverRoom?>(
           stream: _roomService.undercoverRoomStream(widget.code),

@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import '../theme.dart';
 import '../widgets/inactivity_badge.dart';
+import '../widgets/leave_game_button.dart';
 import '../widgets/player_list_tile.dart';
 import '../widgets/room_qr_code.dart';
 import '../widgets/uno_card_widget.dart';
@@ -65,7 +66,22 @@ class _UnoGameScreenState extends State<UnoGameScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Salle ${widget.code}')),
+      appBar: AppBar(
+        title: Text('Salle ${widget.code}'),
+        actions: [
+          StreamBuilder<UnoRoom?>(
+            stream: _roomService.unoRoomStream(widget.code),
+            builder: (context, roomSnap) {
+              if (roomSnap.data?.status != UnoStatus.playing) {
+                return const SizedBox.shrink();
+              }
+              return LeaveGameButton(
+                onConfirmed: () => _roomService.leaveUnoGame(widget.code, _uid),
+              );
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         child: StreamBuilder<UnoRoom?>(
           stream: _roomService.unoRoomStream(widget.code),

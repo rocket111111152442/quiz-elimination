@@ -8,6 +8,7 @@ import '../services/room_service.dart';
 import '../theme.dart';
 import '../widgets/banner_ad_widget.dart';
 import '../widgets/inactivity_badge.dart';
+import '../widgets/leave_game_button.dart';
 import '../widgets/player_list_tile.dart';
 import '../widgets/room_qr_code.dart';
 import '../widgets/staggered_fade_in.dart';
@@ -54,7 +55,26 @@ class _WerewolfGameScreenState extends State<WerewolfGameScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Salle ${widget.code}')),
+      appBar: AppBar(
+        title: Text('Salle ${widget.code}'),
+        actions: [
+          StreamBuilder<WerewolfRoom?>(
+            stream: _roomService.werewolfRoomStream(widget.code),
+            builder: (context, roomSnap) {
+              final status = roomSnap.data?.status;
+              if (status == null ||
+                  status == WerewolfStatus.lobby ||
+                  status == WerewolfStatus.finished) {
+                return const SizedBox.shrink();
+              }
+              return LeaveGameButton(
+                onConfirmed: () =>
+                    _roomService.leaveWerewolfGame(widget.code, _uid),
+              );
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         child: StreamBuilder<WerewolfRoom?>(
           stream: _roomService.werewolfRoomStream(widget.code),

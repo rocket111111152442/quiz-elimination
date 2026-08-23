@@ -189,6 +189,21 @@ class RoomService {
     );
   }
 
+  /// Self-elimination for the "Quitter la partie" button. Only touches the
+  /// leaving player's own doc (Firestore rules keep quiz's room doc
+  /// host-only) — the host's own screen already recomputes who's still
+  /// alive on every rebuild, so it naturally offers "voir les résultats"
+  /// instead of the next question as soon as only one player is left,
+  /// within that question's time limit.
+  Future<void> leaveQuizGame(String code, String uid) async {
+    final roomSnap = await _roomDoc(code).get();
+    final currentQuestionIndex =
+        (roomSnap.data()?['currentQuestionIndex'] as num?)?.toInt();
+    await _playersCol(code)
+        .doc(uid)
+        .update({'alive': false, 'eliminatedAtQuestion': currentQuestionIndex});
+  }
+
   // ---------------------------------------------------------------------
   // Undercover
   // ---------------------------------------------------------------------
@@ -358,6 +373,23 @@ class RoomService {
       default:
         break;
     }
+  }
+
+  /// Self-elimination for the "Quitter la partie" button — same quiet
+  /// immediate elimination as the inactivity timeout, just player-
+  /// triggered instead. A no-op outside the clue/vote phases (nothing to
+  /// leave mid-reveal or before the round starts).
+  Future<void> leaveUndercoverGame(String code, String uid) async {
+    final roomSnap = await _roomDoc(code).get();
+    final data = roomSnap.data();
+    if (data == null) return;
+    final status = undercoverStatusFromString(data['status'] as String);
+    if (status != UndercoverStatus.clue && status != UndercoverStatus.voting) {
+      return;
+    }
+    final playerOrder = List<String>.from(data['playerOrder'] as List);
+    if (!playerOrder.contains(uid)) return;
+    await _finalizeUndercoverRoundResult(code, eliminated: uid, tie: false);
   }
 
   Future<void> submitVote({
@@ -1495,6 +1527,13 @@ class RoomService {
     }
   }
 
+  /// Self-elimination for the "Quitter la partie" button — same quiet
+  /// removal as an inactivity timeout (no revenge/heartbreak chain),
+  /// just player-triggered instead.
+  Future<void> leaveWerewolfGame(String code, String uid) async {
+    await _quietlyEliminateWerewolfPlayer(code, uid);
+  }
+
   Future<void> _resolveWerewolfNightInactivity(
     String code,
     Map<String, dynamic> data,
@@ -1949,8 +1988,7 @@ class RoomService {
     String code,
     DateTime expectedTurnStartedAt,
   ) async {
-    final roomRef = _roomDoc(code);
-    final roomSnap = await roomRef.get();
+    final roomSnap = await _roomDoc(code).get();
     final data = roomSnap.data();
     if (data == null || data['status'] != UnoStatus.playing.name) return;
     final currentTurnStartedAt = (data['turnStartedAt'] as Timestamp?)
@@ -1959,17 +1997,36 @@ class RoomService {
         currentTurnStartedAt != expectedTurnStartedAt) {
       return;
     }
-
     final playerOrder = List<String>.from(data['playerOrder'] as List);
     final currentIndex = (data['currentPlayerIndex'] as num).toInt();
     if (currentIndex < 0 || currentIndex >= playerOrder.length) return;
-    final inactiveUid = playerOrder[currentIndex];
+    await _removeUnoPlayer(code, playerOrder[currentIndex]);
+  }
+
+  /// Self-elimination for the "Quitter la partie" button — works whether
+  /// or not it's currently [uid]'s turn.
+  Future<void> leaveUnoGame(String code, String uid) =>
+      _removeUnoPlayer(code, uid);
+
+  /// Removes [uid] from an in-progress UNO game, shared by the inactivity
+  /// timeout and the "Quitter la partie" button. If it was their turn,
+  /// play passes to whoever was next in line; otherwise the current
+  /// player keeps their turn, just re-indexed for the shorter list. Down
+  /// to one remaining player declares them the winner outright (covers
+  /// the 1v1 case).
+  Future<void> _removeUnoPlayer(String code, String uid) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data();
+    if (data == null || data['status'] != UnoStatus.playing.name) return;
+    final playerOrder = List<String>.from(data['playerOrder'] as List);
+    if (!playerOrder.contains(uid)) return;
 
     await _playersCol(code)
-        .doc(inactiveUid)
+        .doc(uid)
         .update({'alive': false, 'eliminatedAtQuestion': 0});
 
-    final remaining = [...playerOrder]..remove(inactiveUid);
+    final remaining = [...playerOrder]..remove(uid);
     if (remaining.length == 1) {
       await roomRef.update({
         'status': UnoStatus.finished.name,
@@ -1984,20 +2041,20 @@ class RoomService {
       return;
     }
 
+    final currentIndex = (data['currentPlayerIndex'] as num).toInt();
     final direction = (data['direction'] as num).toInt();
-    final targetIndexBefore = _unoNextIndex(
-      currentIndex,
-      direction,
-      playerOrder.length,
-    );
+    final wasCurrentTurn = playerOrder[currentIndex] == uid;
+    final targetIndexBefore = wasCurrentTurn
+        ? _unoNextIndex(currentIndex, direction, playerOrder.length)
+        : currentIndex;
     final targetUid = playerOrder[targetIndexBefore];
     final nextIndex = remaining.indexOf(targetUid);
 
     await roomRef.update({
       'playerOrder': remaining,
       'currentPlayerIndex': nextIndex,
-      'hasDrawnThisTurn': false,
-      'turnStartedAt': FieldValue.serverTimestamp(),
+      if (wasCurrentTurn) 'hasDrawnThisTurn': false,
+      if (wasCurrentTurn) 'turnStartedAt': FieldValue.serverTimestamp(),
     });
   }
 

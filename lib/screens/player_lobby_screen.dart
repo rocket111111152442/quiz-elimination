@@ -8,6 +8,7 @@ import '../services/sound_service.dart';
 import '../theme.dart';
 import '../widgets/answer_button.dart';
 import '../widgets/countdown_timer.dart';
+import '../widgets/leave_game_button.dart';
 import '../widgets/results_view.dart';
 import '../widgets/staggered_fade_in.dart';
 
@@ -47,7 +48,25 @@ class _PlayerLobbyScreenState extends State<PlayerLobbyScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Salle ${widget.code}')),
+      appBar: AppBar(
+        title: Text('Salle ${widget.code}'),
+        actions: [
+          StreamBuilder<Room?>(
+            stream: _roomService.roomStream(widget.code),
+            builder: (context, roomSnap) {
+              final status = roomSnap.data?.status;
+              if (status != RoomStatus.question &&
+                  status != RoomStatus.reveal) {
+                return const SizedBox.shrink();
+              }
+              return LeaveGameButton(
+                onConfirmed: () =>
+                    _roomService.leaveQuizGame(widget.code, _uid),
+              );
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         child: StreamBuilder<Room?>(
           stream: _roomService.roomStream(widget.code),

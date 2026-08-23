@@ -27,15 +27,19 @@ service cloud.firestore {
       allow create: if request.auth != null
                     && request.resource.data.hostUid == request.auth.uid;
 
-      // Seul l'hôte peut faire avancer le quiz et l'Undercover. Pour le
+      // Seul l'hôte peut faire avancer le quiz. Pour l'Undercover, le
       // Loup-Garou et l'UNO, la partie avance à travers l'appareil de
-      // chaque joueur à son tour (nuits, votes, tours de jeu...) plutôt
-      // que par un hôte-spectateur qui cliquerait à la place des autres —
-      // n'importe quel joueur de la salle peut donc faire avancer ces
-      // deux jeux, exactement comme il peut déjà tout lire dans la salle.
+      // chaque joueur à son tour (nuits, votes, tours de jeu, mais aussi
+      // le bouton "Quitter la partie" qui doit pouvoir retirer un joueur
+      // du tour de jeu depuis son propre appareil) plutôt que par un
+      // hôte-spectateur qui cliquerait à la place des autres — n'importe
+      // quel joueur de la salle peut donc faire avancer ces trois jeux,
+      // exactement comme il peut déjà tout lire dans la salle.
       allow update: if request.auth != null && (
         resource.data.hostUid == request.auth.uid
-        || ((resource.data.gameType == 'werewolf' || resource.data.gameType == 'uno') &&
+        || ((resource.data.gameType == 'werewolf' ||
+             resource.data.gameType == 'uno' ||
+             resource.data.gameType == 'undercover') &&
             exists(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid)))
       );
 
@@ -54,6 +58,14 @@ service cloud.firestore {
           ||
           // ...l'hôte seul peut changer alive / eliminatedAtQuestion (élimination, quiz/Undercover)...
           (get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid)
+          ||
+          // ...n'importe quel joueur peut à tout moment s'auto-éliminer
+          // (bouton "Quitter la partie"), même dans les jeux où seul
+          // l'hôte contrôle l'élimination normalement — jamais l'inverse
+          // (se ressusciter soi-même).
+          (request.auth.uid == playerId &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['alive', 'eliminatedAtQuestion']) &&
+           request.resource.data.alive == false)
           ||
           // ...au Loup-Garou et à l'UNO, n'importe quel joueur de la salle
           // peut éliminer n'importe quel autre joueur (résolution d'une
