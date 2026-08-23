@@ -213,18 +213,12 @@ fond (par exemple un morceau généré avec Suno) :
 ## 5. Publicités (AdMob)
 
 Une bannière discrète s'affiche sur l'écran de résultats (jamais pendant
-une question, pour ne pas gêner le jeu). Le projet utilise le **vrai ID
-bannière** de production (`lib/services/ad_service.dart` et
+une question, pour ne pas gêner le jeu). La Boutique propose aussi une
+**pub à la demande** ("Regarder une pub") : en la regardant jusqu'au
+bout, le joueur gagne 10 Étincelles. Le projet utilise les **vrais ID**
+de production pour les deux (`lib/services/ad_service.dart` et
 `android/app/src/main/AndroidManifest.xml`) — les pubs affichées sont
 réelles, pas des pubs de test.
-
-La Boutique propose aussi une **pub à la demande** ("Regarder une pub") :
-en la regardant jusqu'au bout, le joueur gagne 10 Étincelles. Contrairement
-à la bannière, celle-ci utilise encore l'ID de test officiel de Google
-(`ca-app-pub-3940256099942544/5224354917`) — il faut créer une unité
-publicitaire **"Récompensée"** dans la console AdMob (Apps > ton appli >
-Unités publicitaires > Ajouter une unité) et me donner son ID pour que je
-le remplace dans `rewardedAdUnitId`, exactement comme pour la bannière.
 
 À ne pas oublier avant de publier : dans la Play Console, déclare
 l'audience de l'appli (probablement des mineurs si c'est pour une classe)

@@ -10,12 +10,8 @@ class AdService {
 
   static const String bannerAdUnitId = 'ca-app-pub-1873691727255458/7432784335';
 
-  // TODO: Google's official *test* rewarded ad unit — replace with the
-  // real one once created in the AdMob console (Apps > ton appli > Unités
-  // publicitaires > Ajouter une unité > Récompensée), the same way the
-  // banner ID above was swapped for the real one.
   static const String rewardedAdUnitId =
-      'ca-app-pub-3940256099942544/5224354917';
+      'ca-app-pub-1873691727255458/9174025236';
 
   static Future<void> initialize() => MobileAds.instance.initialize();
 
