@@ -67,6 +67,7 @@ class _UnoGameScreenState extends State<UnoGameScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text('Salle ${widget.code}'),
         actions: [
           StreamBuilder<UnoRoom?>(

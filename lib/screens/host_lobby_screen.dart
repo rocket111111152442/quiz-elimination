@@ -41,7 +41,10 @@ class _HostLobbyScreenState extends State<HostLobbyScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Salle ${widget.code}')),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: Text('Salle ${widget.code}'),
+      ),
       body: SafeArea(
         child: StreamBuilder<Room?>(
           stream: _roomService.roomStream(widget.code),

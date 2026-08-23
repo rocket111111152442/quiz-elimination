@@ -40,7 +40,10 @@ class _UndercoverHostScreenState extends State<UndercoverHostScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Salle ${widget.code}')),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: Text('Salle ${widget.code}'),
+      ),
       body: SafeArea(
         child: StreamBuilder<UndercoverRoom?>(
           stream: _roomService.undercoverRoomStream(widget.code),

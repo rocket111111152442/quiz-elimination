@@ -49,6 +49,7 @@ class _PlayerLobbyScreenState extends State<PlayerLobbyScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text('Salle ${widget.code}'),
         actions: [
           StreamBuilder<Room?>(

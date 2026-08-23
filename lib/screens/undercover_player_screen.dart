@@ -80,6 +80,7 @@ class _UndercoverPlayerScreenState extends State<UndercoverPlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text('Salle ${widget.code}'),
         actions: [
           StreamBuilder<UndercoverRoom?>(

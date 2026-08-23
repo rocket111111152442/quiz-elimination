@@ -56,6 +56,7 @@ class _WerewolfGameScreenState extends State<WerewolfGameScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text('Salle ${widget.code}'),
         actions: [
           StreamBuilder<WerewolfRoom?>(
