@@ -64,9 +64,7 @@ flutter:
 
   assets:
     - assets/sfx/
-
-  # Pour ta musique de fond (ex: export Suno) : dépose le fichier dans
-  # assets/music/, puis ajoute "- assets/music/" ci-dessus.
+    - assets/music/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

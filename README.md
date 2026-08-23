@@ -83,11 +83,10 @@ Quatre petits effets sonores (validation, erreur, décompte, démarrage de
 partie) sont déjà inclus dans `assets/sfx/`. Pour ajouter une musique de
 fond (par exemple un morceau généré avec Suno) :
 
-1. Exporte ton morceau en `.mp3` et nomme-le `theme.mp3`.
-2. Dépose-le dans `assets/music/theme.mp3` (crée le dossier si besoin).
-3. Dans `pubspec.yaml`, sous la section `flutter: assets:`, ajoute la ligne
-   `- assets/music/`.
-4. Relance `flutter pub get` puis `flutter run` — la musique se lance
+1. Exporte ton morceau en `.mp3` et nomme-le exactement `theme.mp3`.
+2. Dépose-le dans le dossier `assets/music/` du projet (il existe déjà,
+   avec juste un fichier `README.txt` dedans).
+3. Relance `flutter pub get` puis `flutter run` — la musique se lance
    automatiquement en boucle sur l'écran d'accueil.
 
 ## 5. Publicités (AdMob)
