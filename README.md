@@ -133,8 +133,9 @@ faire tourner la partie.
 3. Dans la salle d'attente, l'hôte choisit la composition : nombre de
    Loups-Garous, et quelles cartes spéciales activer parmi **Voyante,
    Sorcière, Chasseur, Cupidon, Petite Fille, Salvateur, Ancien, Idiot du
-   Village, Bouc Émissaire**. Puis **Démarre la partie** (3 joueurs
-   minimum, y compris l'hôte) — chacun reçoit sa carte en secret.
+   Village, Bouc Émissaire**. Puis **Démarre la partie** (2 joueurs
+   minimum, y compris l'hôte, pour pouvoir tester à deux appareils) —
+   chacun reçoit sa carte en secret.
 4. Chaque nuit, l'appli réveille automatiquement les rôles un par un dans
    l'ordre classique du jeu (Cupidon la première nuit seulement, puis
    Salvateur, Loups-Garous, Petite Fille, Voyante, Sorcière) : seul le
@@ -161,6 +162,13 @@ personne (pas de second tour), et seules ces 9 cartes spéciales + les
 Loups-Garous/Villageois sont incluses pour l'instant (pas de Capitaine,
 Voleur, Corbeau, etc.) — je peux en ajouter d'autres si vous voulez. Les
 cartes sont définies dans `lib/data/werewolf_roles.dart`.
+
+**Partie à 2 joueurs** (surtout utile pour tester avec un seul appareil +
+un émulateur) : possible, mais à 2 le vote du village n'a pas vraiment de
+sens (chacun ne peut voter que pour l'autre, donc c'est toujours à
+égalité) — dans ce cas précis l'appli tranche au hasard plutôt que de
+bloquer la partie. Pour une vraie partie équilibrée, mieux vaut viser au
+moins 5-6 joueurs.
 
 ## 4. Son et musique
 

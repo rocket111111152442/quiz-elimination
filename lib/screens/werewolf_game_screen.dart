@@ -305,7 +305,7 @@ class _LobbyViewState extends State<_LobbyView> {
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: widget.loading || widget.players.length < 3
+                onPressed: widget.loading || widget.players.length < 2
                     ? null
                     : widget.onStart,
                 child: const Text('Démarrer la partie'),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/player.dart';
@@ -222,7 +224,7 @@ class _QuestionView extends StatelessWidget {
   }
 }
 
-class _RevealView extends StatelessWidget {
+class _RevealView extends StatefulWidget {
   final Room room;
   final List<Player> players;
   final bool loading;
@@ -238,7 +240,47 @@ class _RevealView extends StatelessWidget {
   });
 
   @override
+  State<_RevealView> createState() => _RevealViewState();
+}
+
+/// Auto-advances after a short pause so the host doesn't have to tap
+/// through every single question manually — a "Continuer maintenant"
+/// button is still there for whoever wants to skip the wait.
+class _RevealViewState extends State<_RevealView> {
+  static const _autoAdvanceSeconds = 3;
+  Timer? _advanceTimer;
+  Timer? _tickTimer;
+  int _remainingSeconds = _autoAdvanceSeconds;
+
+  @override
+  void initState() {
+    super.initState();
+    _advanceTimer = Timer(
+      const Duration(seconds: _autoAdvanceSeconds),
+      widget.onNext,
+    );
+    _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(
+        () => _remainingSeconds = (_remainingSeconds - 1).clamp(
+          0,
+          _autoAdvanceSeconds,
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _advanceTimer?.cancel();
+    _tickTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final room = widget.room;
+    final players = widget.players;
     final question = room.currentQuestion!;
     final eliminatedNow = players
         .where((p) => p.eliminatedAtQuestion == room.currentQuestionIndex)
@@ -274,11 +316,16 @@ class _RevealView extends StatelessWidget {
             ),
           ],
           const Spacer(),
+          Text(
+            'Passage automatique dans $_remainingSeconds s...',
+            style: const TextStyle(color: Colors.white54),
+          ),
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: loading ? null : onNext,
-              child: Text(nextLabel),
+              onPressed: widget.loading ? null : widget.onNext,
+              child: Text('${widget.nextLabel} maintenant'),
             ),
           ),
         ],

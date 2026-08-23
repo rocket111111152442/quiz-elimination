@@ -669,6 +669,11 @@ class RoomService {
     if (loupGarouCount < 1) {
       throw WerewolfCompositionException('Il faut au moins un Loup-Garou.');
     }
+    if (loupGarouCount >= uids.length) {
+      throw WerewolfCompositionException(
+        'Il faut garder au moins un joueur qui n\'est pas Loup-Garou.',
+      );
+    }
     if (totalSpecial > uids.length) {
       throw WerewolfCompositionException(
         'Trop de rôles sélectionnés ($totalSpecial) pour ${uids.length} '
@@ -1167,6 +1172,16 @@ class RoomService {
                     e.value == 'boucEmissaire' && aliveBefore.contains(e.key),
               )
               ?.key;
+        }
+        // À 2 joueurs vivants, un vote est structurellement toujours à
+        // égalité (chacun ne peut voter que pour l'autre) — sans ça, une
+        // partie à 2 ne pourrait jamais se conclure par un vote. On
+        // tranche au hasard plutôt que de bloquer la partie.
+        final eligibleVoters = aliveBefore
+            .where((u) => !disenfranchised.contains(u))
+            .length;
+        if (eliminated == null && eligibleVoters == 2) {
+          eliminated = (top..shuffle()).first;
         }
       }
     }
