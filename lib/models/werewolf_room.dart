@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 enum WerewolfStatus {
   lobby,
   night,
@@ -41,6 +43,7 @@ class WerewolfRoom {
   final String? pendingActorUid;
   final WerewolfStatus? afterPending;
   final String? winner;
+  final Timestamp? phaseStartedAt;
 
   const WerewolfRoom({
     required this.code,
@@ -68,6 +71,7 @@ class WerewolfRoom {
     this.pendingActorUid,
     this.afterPending,
     this.winner,
+    this.phaseStartedAt,
   });
 
   bool isRoleEnabled(String roleId) => roleEnabled[roleId] ?? false;
@@ -111,6 +115,7 @@ class WerewolfRoom {
           ? werewolfStatusFromString(map['afterPending'] as String)
           : null,
       winner: map['winner'] as String?,
+      phaseStartedAt: map['phaseStartedAt'] as Timestamp?,
     );
   }
 }

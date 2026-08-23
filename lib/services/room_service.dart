@@ -793,6 +793,7 @@ class RoomService {
       'pendingActorUid': null,
       'afterPending': null,
       'winner': null,
+      'phaseStartedAt': FieldValue.serverTimestamp(),
     });
     await batch.commit();
   }
@@ -811,7 +812,10 @@ class RoomService {
       final currentIndex = (data['nightStepIndex'] as num).toInt();
       final nextIndex = currentIndex + 1;
       if (nextIndex < nightOrder.length) {
-        tx.update(roomRef, {'nightStepIndex': nextIndex});
+        tx.update(roomRef, {
+          'nightStepIndex': nextIndex,
+          'phaseStartedAt': FieldValue.serverTimestamp(),
+        });
       } else {
         shouldResolveDawn = true;
       }
@@ -1060,9 +1064,13 @@ class RoomService {
         'status': WerewolfStatus.hunterRevenge.name,
         'pendingActorUid': chasseurDead,
         'afterPending': WerewolfStatus.dayReveal.name,
+        'phaseStartedAt': FieldValue.serverTimestamp(),
       });
     } else {
-      await roomRef.update({'status': WerewolfStatus.dayReveal.name});
+      await roomRef.update({
+        'status': WerewolfStatus.dayReveal.name,
+        'phaseStartedAt': FieldValue.serverTimestamp(),
+      });
     }
   }
 
@@ -1130,12 +1138,16 @@ class RoomService {
       (uid) => uid != hunterUid && roleByUid[uid] == 'chasseur',
     );
     if (anotherHunter != null) {
-      await roomRef.update({'pendingActorUid': anotherHunter});
+      await roomRef.update({
+        'pendingActorUid': anotherHunter,
+        'phaseStartedAt': FieldValue.serverTimestamp(),
+      });
     } else {
       await roomRef.update({
         'status': afterPending.name,
         'pendingActorUid': null,
         'afterPending': null,
+        'phaseStartedAt': FieldValue.serverTimestamp(),
       });
     }
   }
@@ -1143,7 +1155,10 @@ class RoomService {
   /// Host-only (enforced client-side): opens the village vote after the
   /// dawn reveal has been shown.
   Future<void> openWerewolfDayVote(String code) async {
-    await _roomDoc(code).update({'status': WerewolfStatus.dayVote.name});
+    await _roomDoc(code).update({
+      'status': WerewolfStatus.dayVote.name,
+      'phaseStartedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> submitWerewolfDayVote({
@@ -1316,6 +1331,7 @@ class RoomService {
         'status': WerewolfStatus.hunterRevenge.name,
         'pendingActorUid': chasseurDead,
         'afterPending': WerewolfStatus.voteReveal.name,
+        'phaseStartedAt': FieldValue.serverTimestamp(),
       });
     } else {
       await roomRef.update({'status': WerewolfStatus.voteReveal.name});
@@ -1357,7 +1373,169 @@ class RoomService {
       'nightOrder': nightOrder,
       'nightStepIndex': 0,
       'werewolfVictimUid': null,
+      'phaseStartedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  /// Called when the small inactivity badge expires. Any joined client can
+  /// trigger this (same broad trust as the rest of Werewolf's flow).
+  /// [expectedPhaseStartedAt] is the timestamp the badge was counting down
+  /// from — if the room has already moved on by the time this runs (another
+  /// player's device got there first), it's a no-op.
+  Future<void> resolveWerewolfInactivity(
+    String code,
+    DateTime expectedPhaseStartedAt,
+  ) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data();
+    if (data == null) return;
+    final currentPhaseStartedAt = (data['phaseStartedAt'] as Timestamp?)
+        ?.toDate();
+    if (currentPhaseStartedAt == null ||
+        currentPhaseStartedAt != expectedPhaseStartedAt) {
+      return;
+    }
+
+    final status = werewolfStatusFromString(data['status'] as String);
+    switch (status) {
+      case WerewolfStatus.night:
+        await _resolveWerewolfNightInactivity(code, data);
+      case WerewolfStatus.hunterRevenge:
+        final afterPending = werewolfStatusFromString(
+          data['afterPending'] as String,
+        );
+        await roomRef.update({
+          'status': afterPending.name,
+          'pendingActorUid': null,
+          'afterPending': null,
+          'phaseStartedAt': FieldValue.serverTimestamp(),
+        });
+      case WerewolfStatus.dayVote:
+        await tallyWerewolfDayVote(code);
+      default:
+        break;
+    }
+  }
+
+  Future<void> _resolveWerewolfNightInactivity(
+    String code,
+    Map<String, dynamic> data,
+  ) async {
+    final nightOrder = List<String>.from(data['nightOrder'] as List);
+    final stepIndex = (data['nightStepIndex'] as num).toInt();
+    if (stepIndex < 0 || stepIndex >= nightOrder.length) return;
+    final roleId = nightOrder[stepIndex];
+
+    if (roleId == 'loupGarou') {
+      // Les loups votent ensemble : plutôt que d'éliminer qui que ce soit,
+      // on force la résolution avec les votes déjà soumis (comme un vote
+      // du village qu'on écourte), la meute ne bloque pas la partie pour
+      // un seul loup AFK.
+      final roundIndex = (data['roundIndex'] as num).toInt();
+      final votesSnap = await _roomDoc(code)
+          .collection('rounds')
+          .doc('$roundIndex')
+          .collection('wolfVotes')
+          .get();
+      if (votesSnap.docs.isEmpty) {
+        await advanceWerewolfNightStep(code);
+        return;
+      }
+      final tally = <String, int>{};
+      for (final d in votesSnap.docs) {
+        final target = d.data()['votedFor'] as String;
+        tally[target] = (tally[target] ?? 0) + 1;
+      }
+      final maxVotes = tally.values.fold(0, (m, v) => v > m ? v : m);
+      final top =
+          (tally.entries
+                .where((e) => e.value == maxVotes)
+                .map((e) => e.key)
+                .toList())
+            ..shuffle();
+      final victim = top.first;
+      final roomRef = _roomDoc(code);
+      final resolved = await _db.runTransaction<bool>((tx) async {
+        final snap = await tx.get(roomRef);
+        final d = snap.data()!;
+        if (d['status'] != WerewolfStatus.night.name) return false;
+        if (d['werewolfVictimUid'] != null) return false;
+        tx.update(roomRef, {'werewolfVictimUid': victim});
+        return true;
+      });
+      if (resolved) await advanceWerewolfNightStep(code);
+      return;
+    }
+
+    // Rôle à titulaire unique (Cupidon, Salvateur, Voyante, Sorcière) :
+    // le titulaire vivant est inactif depuis trop longtemps. On l'élimine
+    // discrètement (sans vengeance de Chasseur ni chagrin d'Amoureux — une
+    // simplification assumée pour ne pas déclencher de réaction en chaîne
+    // sur une simple absence) et la nuit continue sans son action.
+    final secretsSnap = await _roomDoc(code).collection('secrets').get();
+    final roleByUid = {
+      for (final d in secretsSnap.docs) d.id: d.data()['role'] as String,
+    };
+    final playersSnap = await _playersCol(code).get();
+    final aliveUids = {
+      for (final d in playersSnap.docs)
+        if (Player.fromMap(d.id, d.data()).alive) d.id,
+    };
+    final holder = roleByUid.entries
+        .firstWhereOrNull((e) => e.value == roleId && aliveUids.contains(e.key))
+        ?.key;
+    var finished = false;
+    if (holder != null) {
+      finished = await _quietlyEliminateWerewolfPlayer(code, holder);
+    }
+    if (!finished) await advanceWerewolfNightStep(code);
+  }
+
+  /// Removes a player from the game due to inactivity, without any of the
+  /// normal elimination side effects (Chasseur's revenge, lovers'
+  /// heartbreak, Ancien's power loss...). Still checks the win condition
+  /// since a team left empty must still end the game. Returns true if the
+  /// game just ended.
+  Future<bool> _quietlyEliminateWerewolfPlayer(String code, String uid) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data();
+    if (data == null || data['status'] == WerewolfStatus.finished.name) {
+      return false;
+    }
+
+    final secretsSnap = await roomRef.collection('secrets').get();
+    final roleByUid = {
+      for (final d in secretsSnap.docs) d.id: d.data()['role'] as String,
+    };
+    final playersSnap = await _playersCol(code).get();
+    final aliveBefore = {
+      for (final d in playersSnap.docs)
+        if (Player.fromMap(d.id, d.data()).alive) d.id,
+    };
+    if (!aliveBefore.contains(uid)) return false;
+
+    await _playersCol(code).doc(uid).update({
+      'alive': false,
+      'eliminatedAtQuestion': (data['roundIndex'] as num).toInt(),
+    });
+
+    final remainingAlive = {...aliveBefore}..remove(uid);
+    final loversUids = List<String>.from(data['loversUids'] as List? ?? []);
+    final winner = _checkWerewolfWinner(
+      aliveUids: remainingAlive,
+      roleByUid: roleByUid,
+      loversUids: loversUids,
+    );
+    if (winner != null) {
+      await roomRef.update({
+        'status': WerewolfStatus.finished.name,
+        'winner': winner,
+      });
+      return true;
+    }
+    return false;
   }
 
   Stream<WerewolfRoom?> werewolfRoomStream(String code) {

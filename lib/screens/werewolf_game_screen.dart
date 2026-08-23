@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import '../theme.dart';
 import '../widgets/banner_ad_widget.dart';
+import '../widgets/inactivity_badge.dart';
 import '../widgets/player_list_tile.dart';
 import '../widgets/room_qr_code.dart';
 import '../widgets/staggered_fade_in.dart';
@@ -358,6 +359,17 @@ class _NightView extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
+              if (room.phaseStartedAt != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: InactivityBadge(
+                    since: room.phaseStartedAt!.toDate(),
+                    onExpired: () => roomService.resolveWerewolfInactivity(
+                      code,
+                      room.phaseStartedAt!.toDate(),
+                    ),
+                  ),
+                ),
               Text(
                 '🌙 Nuit ${room.roundIndex + 1}',
                 style: const TextStyle(color: Colors.white70),
@@ -942,16 +954,32 @@ class _HunterRevengeView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isHunter = room.pendingActorUid == uid;
+    final badge = room.phaseStartedAt == null
+        ? null
+        : Align(
+            alignment: Alignment.centerRight,
+            child: InactivityBadge(
+              since: room.phaseStartedAt!.toDate(),
+              onExpired: () => roomService.resolveWerewolfInactivity(
+                code,
+                room.phaseStartedAt!.toDate(),
+              ),
+            ),
+          );
     if (!isHunter) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            '🏹 ${nameByUid[room.pendingActorUid] ?? '...'} était Chasseur '
-            'et vient de mourir...\nIl/elle choisit sa vengeance.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 18),
-          ),
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ?badge,
+            Text(
+              '🏹 ${nameByUid[room.pendingActorUid] ?? '...'} était Chasseur '
+              'et vient de mourir...\nIl/elle choisit sa vengeance.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18),
+            ),
+          ],
         ),
       );
     }
@@ -960,6 +988,7 @@ class _HunterRevengeView extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
+          ?badge,
           const Text(
             '🏹 Tu es mort, mais avant de partir...',
             textAlign: TextAlign.center,
@@ -1094,6 +1123,17 @@ class _DayVoteView extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
+          if (room.phaseStartedAt != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: InactivityBadge(
+                since: room.phaseStartedAt!.toDate(),
+                onExpired: () => roomService.resolveWerewolfInactivity(
+                  code,
+                  room.phaseStartedAt!.toDate(),
+                ),
+              ),
+            ),
           const Text(
             '🗳️ Qui le village élimine-t-il ?',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
