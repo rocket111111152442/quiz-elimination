@@ -4,10 +4,6 @@ class Player {
   final bool alive;
   final int? eliminatedAtQuestion;
   final Map<int, int> answers;
-  final String? bike;
-  final int lapsCompleted;
-  final bool finished;
-  final int? finishTimeMs;
 
   const Player({
     required this.uid,
@@ -15,10 +11,6 @@ class Player {
     required this.alive,
     this.eliminatedAtQuestion,
     this.answers = const {},
-    this.bike,
-    this.lapsCompleted = 0,
-    this.finished = false,
-    this.finishTimeMs,
   });
 
   int? answerFor(int questionIndex) => answers[questionIndex];
@@ -33,10 +25,6 @@ class Player {
       answers: rawAnswers.map(
         (key, value) => MapEntry(int.parse(key), (value as num).toInt()),
       ),
-      bike: map['bike'] as String?,
-      lapsCompleted: (map['lapsCompleted'] as num?)?.toInt() ?? 0,
-      finished: map['finished'] as bool? ?? false,
-      finishTimeMs: (map['finishTimeMs'] as num?)?.toInt(),
     );
   }
 }

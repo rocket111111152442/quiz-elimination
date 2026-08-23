@@ -8,9 +8,17 @@ service cloud.firestore {
       allow create: if request.auth != null
                     && request.resource.data.hostUid == request.auth.uid;
 
-      // Seul l'hôte peut faire avancer la partie (questions, statut, tours...).
-      allow update: if request.auth != null
-                    && resource.data.hostUid == request.auth.uid;
+      // Seul l'hôte peut faire avancer le quiz et l'Undercover. Pour le
+      // Loup-Garou, la partie a beaucoup plus de phases automatiques
+      // (tours de nuit, votes, chaînes de réactions) qu'il serait
+      // fastidieux de faire cliquer à un hôte-spectateur — n'importe quel
+      // joueur de la salle peut donc faire avancer une partie de
+      // Loup-Garou, exactement comme il peut déjà tout lire dans la salle.
+      allow update: if request.auth != null && (
+        resource.data.hostUid == request.auth.uid
+        || (resource.data.gameType == 'werewolf' &&
+            exists(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid)))
+      );
 
       allow delete: if false;
 
@@ -25,14 +33,16 @@ service cloud.firestore {
           (request.auth.uid == playerId &&
            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers']))
           ||
-          // ...ou, dans la course de motos, son propre choix de moto et sa
-          // progression (tours, arrivée)...
-          (request.auth.uid == playerId &&
-           get(/databases/$(database)/documents/rooms/$(roomCode)).data.gameType == 'racing' &&
-           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bike', 'lapsCompleted', 'finished', 'finishTimeMs']))
-          ||
-          // ...l'hôte seul peut changer alive / eliminatedAtQuestion (élimination).
+          // ...l'hôte seul peut changer alive / eliminatedAtQuestion (élimination, quiz/Undercover)...
           (get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid)
+          ||
+          // ...au Loup-Garou, n'importe quel joueur de la salle peut
+          // éliminer n'importe quel autre joueur (résolution d'une nuit,
+          // d'un vote ou d'une vengeance de Chasseur se fait sur
+          // l'appareil de celui qui déclenche la résolution).
+          (get(/databases/$(database)/documents/rooms/$(roomCode)).data.gameType == 'werewolf' &&
+           exists(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid)) &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['alive', 'eliminatedAtQuestion']))
         );
 
         allow delete: if false;
@@ -40,11 +50,27 @@ service cloud.firestore {
 
       // Undercover : mot secret + rôle de chaque joueur, invisible des
       // autres joueurs tant que la partie n'est pas terminée.
+      // Loup-Garou : carte de chaque joueur, invisible sauf pour la
+      // Voyante (qui peut regarder n'importe quelle carte pendant la
+      // partie — l'appli ne lui montre qu'une seule à la fois, une par
+      // nuit).
       match /secrets/{uid} {
         allow read: if request.auth != null && (
           request.auth.uid == uid
           || get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid
           || get(/databases/$(database)/documents/rooms/$(roomCode)).data.status == 'finished'
+          || (
+               get(/databases/$(database)/documents/rooms/$(roomCode)).data.gameType == 'werewolf'
+               && get(/databases/$(database)/documents/rooms/$(roomCode)/secrets/$(request.auth.uid)).data.role == 'voyante'
+             )
+          // Les Loups-Garous se reconnaissent entre eux (comme autour
+          // d'une vraie table) : un loup peut lire la carte d'un autre
+          // joueur uniquement si elle est aussi 'loupGarou'.
+          || (
+               get(/databases/$(database)/documents/rooms/$(roomCode)).data.gameType == 'werewolf'
+               && resource.data.role == 'loupGarou'
+               && get(/databases/$(database)/documents/rooms/$(roomCode)/secrets/$(request.auth.uid)).data.role == 'loupGarou'
+             )
         );
 
         allow write: if request.auth != null
@@ -62,9 +88,11 @@ service cloud.firestore {
                      && get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid;
       }
 
-      // Undercover : indices et votes d'une manche, chaque joueur n'écrit
-      // que sa propre entrée mais tout le monde peut tout lire (indices
-      // visibles de tous, comme en vrai autour de la table).
+      // Indices/votes d'Undercover et actions de nuit/vote du Loup-Garou :
+      // chaque joueur n'écrit que sa propre entrée, mais tout le monde
+      // peut tout lire (indices visibles de tous, comme en vrai autour de
+      // la table ; pour le Loup-Garou l'appli ne montre chaque action
+      // qu'au joueur concerné, même si la règle est large).
       match /rounds/{roundIndex} {
         match /clues/{uid} {
           allow read: if request.auth != null;
@@ -88,13 +116,35 @@ service cloud.firestore {
           allow update: if false;
           allow delete: if false;
         }
-      }
 
-      // Course de motos : position en temps réel de chaque joueur, écrite
-      // très fréquemment par son propriétaire uniquement.
-      match /positions/{uid} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null && request.auth.uid == uid;
+        // Loup-Garou : votes des loups, protection du Salvateur, regard de
+        // la Voyante, action de la Sorcière, choix de Cupidon, vote du
+        // village — chacun peut réécrire sa propre entrée (pour changer
+        // d'avis avant que le tour ne soit résolu).
+        match /wolfVotes/{uid} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == uid;
+        }
+        match /salvateurChoice/{uid} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == uid;
+        }
+        match /voyanteLooks/{uid} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == uid;
+        }
+        match /witchActions/{uid} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == uid;
+        }
+        match /cupidonChoice/{uid} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == uid;
+        }
+        match /dayVotes/{uid} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null && request.auth.uid == uid;
+        }
       }
     }
   }

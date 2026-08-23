@@ -119,34 +119,48 @@ des autres. S'il est démasqué par un vote, il a une dernière chance avant
 que la partie continue : deviner le mot des civils. S'il trouve, il gagne
 la partie à lui tout seul, peu importe le nombre de joueurs restants.
 
-### Course de Motos
+### Loup-Garou
 
-Course multijoueur en 2D vue du dessus, jusqu'à 8 pilotes en même temps.
+Contrairement aux autres mini-jeux, ici **l'hôte joue aussi** — l'appli
+elle-même tient le rôle du narrateur (celui qui dirait normalement « le
+village s'endort », « les Loups-Garous se réveillent »... autour d'une
+vraie table), donc plus besoin d'un·e élève qui ne joue pas juste pour
+faire tourner la partie.
 
-1. L'hôte choisit **Course de Motos** — aucune configuration nécessaire,
-   la salle est créée directement.
-2. Les élèves rejoignent avec le code et choisissent leur moto parmi 4
-   modèles aux caractéristiques différentes (vitesse, accélération,
-   virage).
-3. L'hôte **Démarre la course** : un décompte de 3 secondes s'affiche chez
-   tout le monde, identique sur tous les écrans.
-4. Chacun pilote sa moto avec deux boutons **◀ ▶** pour tourner et un
-   bouton **GAZ** à maintenir pour accélérer — pensé pour être jouable au
-   pouce sur tablette ou téléphone. Le circuit contient des flaques
-   d'huile qui ralentissent, ainsi qu'un mini-boss qui patrouille sur une
-   portion du circuit et repousse quiconque le touche.
-5. Le premier arrivé après le nombre de tours prévu (3 par défaut) gagne.
-   L'hôte suit un classement en direct et clique sur **Voir les
-   résultats** une fois la course jugée terminée.
+1. L'hôte choisit **Loup-Garou** et indique son pseudo — il rejoint
+   automatiquement la partie en tant que joueur.
+2. Les élèves rejoignent avec le code, comme pour les autres mini-jeux.
+3. Dans la salle d'attente, l'hôte choisit la composition : nombre de
+   Loups-Garous, et quelles cartes spéciales activer parmi **Voyante,
+   Sorcière, Chasseur, Cupidon, Petite Fille, Salvateur, Ancien, Idiot du
+   Village, Bouc Émissaire**. Puis **Démarre la partie** (3 joueurs
+   minimum, y compris l'hôte) — chacun reçoit sa carte en secret.
+4. Chaque nuit, l'appli réveille automatiquement les rôles un par un dans
+   l'ordre classique du jeu (Cupidon la première nuit seulement, puis
+   Salvateur, Loups-Garous, Petite Fille, Voyante, Sorcière) : seul le
+   joueur concerné voit l'écran d'action correspondant, les autres
+   patientent. Dès qu'une action est faite, l'appli passe au rôle suivant
+   toute seule — personne n'a besoin de cliquer "suivant" à la place des
+   autres.
+5. Au petit matin, l'appli annonce qui est mort cette nuit. L'hôte lance
+   ensuite le vote du village : chacun vote pour qui éliminer, l'hôte clôt
+   le vote une fois que tout le monde a voté (ou en forçant la clôture).
+6. Les pouvoirs spéciaux (Chasseur qui se venge en mourant, Idiot du
+   Village qui survit à un vote, amoureux de Cupidon qui meurent
+   ensemble, Ancien qui punit un vote injuste en coupant tous les
+   pouvoirs du village...) se déclenchent automatiquement quand ils
+   s'appliquent. La partie continue en manches jusqu'à la victoire du
+   village, des Loups-Garous, ou des amoureux (s'ils sont les deux
+   derniers survivants, peu importe leur camp d'origine).
+7. Une fois la partie terminée, l'écran final révèle le rôle de chacun —
+   et un bouton **Quitter la partie** ramène directement à l'accueil.
 
-Techniquement, ce mini-jeu n'utilise aucun moteur de jeu externe (pas de
-Flame, pas de Realtime Database) : tout est fait avec les outils déjà
-présents dans Flutter (`CustomPainter` + un `Ticker` pour la boucle de
-jeu), et la position de chaque joueur est simplement synchronisée via
-Firestore plusieurs fois par seconde — ça évite d'avoir un nouveau
-service Firebase à activer. Le circuit, les motos et les obstacles sont
-définis dans `lib/game/race_track.dart` et `lib/data/bike_specs.dart` si
-tu veux les ajuster (vitesse, forme du circuit, etc.).
+Simplifications volontaires par rapport aux règles papier (pour rester
+raisonnable à coder) : un vote à égalité sans Bouc Émissaire n'élimine
+personne (pas de second tour), et seules ces 9 cartes spéciales + les
+Loups-Garous/Villageois sont incluses pour l'instant (pas de Capitaine,
+Voleur, Corbeau, etc.) — je peux en ajouter d'autres si vous voulez. Les
+cartes sont définies dans `lib/data/werewolf_roles.dart`.
 
 ## 4. Son et musique
 
@@ -231,21 +245,23 @@ continuer à jouer.
 ```
 lib/
   data/         # question_bank.dart (~190 questions), word_bank.dart
-                # (100 paires de mots Undercover), bike_specs.dart
-  game/         # race_track.dart — circuit, obstacles, mini-boss
+                # (100 paires de mots Undercover), werewolf_roles.dart
+                # (les cartes du Loup-Garou)
   models/       # Question, Room, Player, GameType, UndercoverRoom,
-                # RacingRoom
+                # WerewolfRoom
   services/     # AuthService, RoomService (Firestore, les 3 mini-jeux),
                 # SoundService, AdService
   screens/      # Home, choix du mini-jeu, création/rejoindre salle,
                 # banque de questions, écrans hôte/joueur des 3 mini-jeux
   widgets/      # Boutons de réponse, minuteur, liste de joueurs, résultats
-                # des 3 mini-jeux, bannière publicitaire
+                # des mini-jeux, bannière publicitaire
 assets/sfx/     # Effets sonores (générés, libres de droits)
 assets/music/   # Ta musique de fond (à ajouter toi-même, voir section 4)
-firestore.rules # Règles de sécurité (l'hôte contrôle la partie, chaque
-                # joueur ne peut écrire que sa propre réponse / son propre
-                # indice / son propre vote / sa propre position)
+firestore.rules # Règles de sécurité (l'hôte contrôle le quiz et
+                # l'Undercover ; au Loup-Garou, vu le nombre de phases
+                # automatiques, n'importe quel joueur de la salle peut
+                # faire avancer la partie — chacun reste limité à ce que
+                # l'appli lui montre à l'écran)
 ```
 
 D'autres mini-jeux viendront s'ajouter au même menu de choix à l'avenir —

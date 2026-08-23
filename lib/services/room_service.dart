@@ -2,15 +2,30 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../data/werewolf_roles.dart';
 import '../data/word_bank.dart';
 import '../models/game_type.dart';
 import '../models/player.dart';
 import '../models/question.dart';
-import '../models/racing_room.dart';
 import '../models/room.dart';
 import '../models/undercover_room.dart';
+import '../models/werewolf_room.dart';
 
 class RoomNotFoundException implements Exception {}
+
+class WerewolfCompositionException implements Exception {
+  final String message;
+  WerewolfCompositionException(this.message);
+}
+
+extension _FirstWhereOrNull<T> on Iterable<T> {
+  T? firstWhereOrNull(bool Function(T) test) {
+    for (final e in this) {
+      if (test(e)) return e;
+    }
+    return null;
+  }
+}
 
 class RoomService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -509,91 +524,800 @@ class RoomService {
   }
 
   // ---------------------------------------------------------------------
-  // Course de motos
+  // Loup-Garou
   // ---------------------------------------------------------------------
 
-  Future<String> createRacingRoom({required String hostUid}) async {
+  static const _werewolfNightTemplate = [
+    'cupidon',
+    'salvateur',
+    'loupGarou',
+    'petiteFille',
+    'voyante',
+    'sorciere',
+  ];
+
+  List<String> _computeWerewolfNightOrder({
+    required int roundIndex,
+    required Map<String, bool> roleEnabled,
+    required Map<String, String> roleByUid,
+    required Set<String> aliveUids,
+    required bool villagePowersLost,
+  }) {
+    final order = <String>[];
+    for (final roleId in _werewolfNightTemplate) {
+      if (roleId == 'cupidon') {
+        if (roundIndex != 0) continue;
+        if (!(roleEnabled['cupidon'] ?? false)) continue;
+      } else if (roleId == 'loupGarou') {
+        // Toujours en jeu tant qu'il reste un loup vivant.
+      } else {
+        if (!(roleEnabled[roleId] ?? false)) continue;
+        if (villagePowersLost) continue;
+      }
+      final hasAliveHolder = roleByUid.entries.any(
+        (e) => e.value == roleId && aliveUids.contains(e.key),
+      );
+      if (hasAliveHolder) order.add(roleId);
+    }
+    return order;
+  }
+
+  void _applyWerewolfLoversChain(Set<String> deaths, List<String> loversUids) {
+    if (loversUids.length != 2) return;
+    final a = loversUids[0];
+    final b = loversUids[1];
+    if (deaths.contains(a) && !deaths.contains(b)) deaths.add(b);
+    if (deaths.contains(b) && !deaths.contains(a)) deaths.add(a);
+  }
+
+  /// null while the game continues, else 'village' | 'loups' | 'amoureux'.
+  String? _checkWerewolfWinner({
+    required Set<String> aliveUids,
+    required Map<String, String> roleByUid,
+    required List<String> loversUids,
+  }) {
+    if (aliveUids.length == 2 &&
+        loversUids.length == 2 &&
+        aliveUids.containsAll(loversUids)) {
+      return 'amoureux';
+    }
+    final aliveWolves = aliveUids
+        .where((uid) => roleByUid[uid] == 'loupGarou')
+        .length;
+    final aliveVillage = aliveUids.length - aliveWolves;
+    if (aliveWolves == 0) return 'village';
+    if (aliveWolves >= aliveVillage) return 'loups';
+    return null;
+  }
+
+  /// Creates the room AND immediately joins the creator as a player — in
+  /// Loup-Garou the "hôte" also plays, they just have a couple of extra
+  /// narrator buttons (open the vote, close it) that other players don't.
+  Future<String> createWerewolfRoom({
+    required String hostUid,
+    required String hostName,
+  }) async {
     final code = await _findAvailableCode();
     await _roomDoc(code).set({
       'hostUid': hostUid,
-      'gameType': GameType.racing.name,
-      'status': RacingStatus.lobby.name,
-      'laps': 3,
-      'countdownStartedAt': null,
+      'gameType': GameType.werewolf.name,
+      'status': WerewolfStatus.lobby.name,
+      'loupGarouCount': 1,
+      'roleEnabled': {
+        for (final r in werewolfRoles.where((r) => r.isUnique)) r.id: false,
+      },
+      'roundIndex': 0,
+      'nightOrder': <String>[],
+      'nightStepIndex': 0,
+      'werewolfVictimUid': null,
+      'salvateurProtectedUid': null,
+      'salvateurLastProtectedUid': null,
+      'witchHealUsed': false,
+      'witchKillUsed': false,
+      'loversUids': <String>[],
+      'villagePowersLost': false,
+      'ancienImmunityUsed': false,
+      'disenfranchisedUids': <String>[],
+      'lastNightDeaths': <String>[],
+      'lastVoteEliminated': null,
+      'lastVoteTie': false,
+      'lastVoteIdiotSurvived': false,
+      'chainDeaths': <String>[],
+      'pendingActorUid': null,
+      'afterPending': null,
+      'winner': null,
       'createdAt': FieldValue.serverTimestamp(),
+    });
+    await _playersCol(code).doc(hostUid).set({
+      'name': hostName,
+      'alive': true,
+      'eliminatedAtQuestion': null,
+      'answers': <String, int>{},
+      'joinedAt': FieldValue.serverTimestamp(),
     });
     return code;
   }
 
-  Future<void> setBike({
+  Future<void> updateWerewolfComposition({
     required String code,
-    required String uid,
-    required String bikeId,
+    required int loupGarouCount,
+    required Map<String, bool> roleEnabled,
   }) async {
-    await _playersCol(code).doc(uid).update({'bike': bikeId});
+    await _roomDoc(code)
+        .update({'loupGarouCount': loupGarouCount, 'roleEnabled': roleEnabled});
   }
 
-  /// Host-only: kicks off the pre-race countdown. Every client derives the
-  /// same race-start instant from this server timestamp, so no further
-  /// writes are needed once the race is actually rolling.
-  Future<void> startRace(String code) async {
-    await _roomDoc(code).update({
-      'status': RacingStatus.countdown.name,
-      'countdownStartedAt': FieldValue.serverTimestamp(),
-    });
-  }
+  /// Deals every joined player a role, computes night 0's order and starts
+  /// the game. Throws [WerewolfCompositionException] if the chosen cards
+  /// don't fit the number of joined players.
+  Future<void> startWerewolfGame(String code) async {
+    final roomSnap = await _roomDoc(code).get();
+    final data = roomSnap.data()!;
+    final loupGarouCount = (data['loupGarouCount'] as num).toInt();
+    final roleEnabled = Map<String, dynamic>.from(
+      data['roleEnabled'] as Map? ?? {},
+    ).map((k, v) => MapEntry(k, v as bool));
 
-  Future<void> updatePosition({
-    required String code,
-    required String uid,
-    required double x,
-    required double y,
-    required double heading,
-  }) async {
-    await _roomDoc(code).collection('positions').doc(uid).set({
-      'x': x,
-      'y': y,
-      'heading': heading,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-  }
+    final playersSnap = await _playersCol(code).get();
+    final uids = playersSnap.docs.map((d) => d.id).toList();
 
-  Future<void> updateLapProgress({
-    required String code,
-    required String uid,
-    required int lapsCompleted,
-    bool finished = false,
-    int? finishTimeMs,
-  }) async {
-    await _playersCol(code).doc(uid).update({
-      'lapsCompleted': lapsCompleted,
-      if (finished) 'finished': true,
-      'finishTimeMs': ?finishTimeMs,
-    });
-  }
+    final enabledUniqueRoles = roleEnabled.entries
+        .where((e) => e.value)
+        .map((e) => e.key)
+        .toList();
+    final totalSpecial = loupGarouCount + enabledUniqueRoles.length;
+    if (loupGarouCount < 1) {
+      throw WerewolfCompositionException('Il faut au moins un Loup-Garou.');
+    }
+    if (totalSpecial > uids.length) {
+      throw WerewolfCompositionException(
+        'Trop de rôles sélectionnés ($totalSpecial) pour ${uids.length} '
+        'joueur(s). Réduis-en certains.',
+      );
+    }
 
-  Future<void> finishRacingGame(String code) async {
-    await _roomDoc(code).update({'status': RacingStatus.finished.name});
-  }
+    final shuffled = [...uids]..shuffle();
+    final wolfUids = shuffled.sublist(0, loupGarouCount);
+    final specialUids = shuffled.sublist(loupGarouCount, totalSpecial);
+    final roleByUid = <String, String>{};
+    for (final uid in wolfUids) {
+      roleByUid[uid] = 'loupGarou';
+    }
+    for (var i = 0; i < enabledUniqueRoles.length; i++) {
+      roleByUid[specialUids[i]] = enabledUniqueRoles[i];
+    }
+    for (final uid in uids) {
+      roleByUid.putIfAbsent(uid, () => 'villageois');
+    }
 
-  Stream<RacingRoom?> racingRoomStream(String code) {
-    return _roomDoc(code).snapshots().map(
-      (snap) => snap.exists ? RacingRoom.fromMap(code, snap.data()!) : null,
+    final nightOrder = _computeWerewolfNightOrder(
+      roundIndex: 0,
+      roleEnabled: roleEnabled,
+      roleByUid: roleByUid,
+      aliveUids: uids.toSet(),
+      villagePowersLost: false,
     );
+
+    final batch = _db.batch();
+    for (final uid in uids) {
+      batch.set(_roomDoc(code).collection('secrets').doc(uid), {
+        'role': roleByUid[uid],
+      });
+    }
+    batch.update(_roomDoc(code), {
+      'status': WerewolfStatus.night.name,
+      'roundIndex': 0,
+      'nightOrder': nightOrder,
+      'nightStepIndex': 0,
+      'werewolfVictimUid': null,
+      'salvateurProtectedUid': null,
+      'salvateurLastProtectedUid': null,
+      'witchHealUsed': false,
+      'witchKillUsed': false,
+      'loversUids': <String>[],
+      'villagePowersLost': false,
+      'ancienImmunityUsed': false,
+      'disenfranchisedUids': <String>[],
+      'lastNightDeaths': <String>[],
+      'lastVoteEliminated': null,
+      'lastVoteTie': false,
+      'lastVoteIdiotSurvived': false,
+      'chainDeaths': <String>[],
+      'pendingActorUid': null,
+      'afterPending': null,
+      'winner': null,
+    });
+    await batch.commit();
   }
 
-  Stream<Map<String, CarPosition>> positionsStream(String code) {
+  /// Moves to the next role in the night order, or resolves dawn once the
+  /// sequence is exhausted. Safe to call redundantly — it re-checks the
+  /// room is still in [WerewolfStatus.night] before doing anything.
+  Future<void> advanceWerewolfNightStep(String code) async {
+    final roomRef = _roomDoc(code);
+    var shouldResolveDawn = false;
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(roomRef);
+      final data = snap.data()!;
+      if (data['status'] != WerewolfStatus.night.name) return;
+      final nightOrder = List<String>.from(data['nightOrder'] as List);
+      final currentIndex = (data['nightStepIndex'] as num).toInt();
+      final nextIndex = currentIndex + 1;
+      if (nextIndex < nightOrder.length) {
+        tx.update(roomRef, {'nightStepIndex': nextIndex});
+      } else {
+        shouldResolveDawn = true;
+      }
+    });
+    if (shouldResolveDawn) {
+      await _resolveWerewolfDawn(code);
+    }
+  }
+
+  Future<void> submitWolfVote({
+    required String code,
+    required String uid,
+    required int roundIndex,
+    required String targetUid,
+  }) async {
+    await _roomDoc(code)
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('wolfVotes')
+        .doc(uid)
+        .set({'votedFor': targetUid});
+
+    final secretsSnap = await _roomDoc(code).collection('secrets').get();
+    final playersSnap = await _playersCol(code).get();
+    final aliveUids = {
+      for (final d in playersSnap.docs)
+        if (Player.fromMap(d.id, d.data()).alive) d.id,
+    };
+    final wolfUids = {
+      for (final d in secretsSnap.docs)
+        if (d.data()['role'] == 'loupGarou' && aliveUids.contains(d.id)) d.id,
+    };
+    final votesSnap = await _roomDoc(code)
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('wolfVotes')
+        .get();
+    final votesByUid = {
+      for (final d in votesSnap.docs) d.id: d.data()['votedFor'] as String,
+    };
+    if (wolfUids.any((w) => !votesByUid.containsKey(w))) return;
+
+    final tally = <String, int>{};
+    for (final w in wolfUids) {
+      final target = votesByUid[w]!;
+      tally[target] = (tally[target] ?? 0) + 1;
+    }
+    final maxVotes = tally.values.fold(0, (m, v) => v > m ? v : m);
+    final top =
+        tally.entries
+            .where((e) => e.value == maxVotes)
+            .map((e) => e.key)
+            .toList()
+          ..shuffle();
+    final victim = top.first;
+
+    final roomRef = _roomDoc(code);
+    final resolved = await _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(roomRef);
+      final data = snap.data()!;
+      if (data['status'] != WerewolfStatus.night.name) return false;
+      if (data['werewolfVictimUid'] != null) return false;
+      tx.update(roomRef, {'werewolfVictimUid': victim});
+      return true;
+    });
+    if (resolved) {
+      await advanceWerewolfNightStep(code);
+    }
+  }
+
+  Future<void> submitSalvateurChoice({
+    required String code,
+    required String uid,
+    required int roundIndex,
+    required String targetUid,
+  }) async {
+    await _roomDoc(code)
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('salvateurChoice')
+        .doc(uid)
+        .set({'targetUid': targetUid});
+    await _roomDoc(code).update({'salvateurProtectedUid': targetUid});
+    await advanceWerewolfNightStep(code);
+  }
+
+  /// Records the Voyante's pick but does NOT advance the night — she needs
+  /// to actually see the revealed role first. Her screen calls
+  /// [advanceWerewolfNightStep] itself once she's ready to continue.
+  Future<void> submitVoyanteLook({
+    required String code,
+    required String uid,
+    required int roundIndex,
+    required String targetUid,
+  }) async {
+    await _roomDoc(code)
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('voyanteLooks')
+        .doc(uid)
+        .set({'targetUid': targetUid});
+  }
+
+  Stream<String?> voyanteLookTargetStream(
+    String code,
+    int roundIndex,
+    String uid,
+  ) {
     return _roomDoc(code)
-        .collection('positions')
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('voyanteLooks')
+        .doc(uid)
+        .snapshots()
+        .map((s) => s.data()?['targetUid'] as String?);
+  }
+
+  Future<void> submitWitchAction({
+    required String code,
+    required String uid,
+    required int roundIndex,
+    required bool heal,
+    String? killTargetUid,
+  }) async {
+    await _roomDoc(code)
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('witchActions')
+        .doc(uid)
+        .set({'heal': heal, 'killTargetUid': killTargetUid});
+    final updates = <String, dynamic>{};
+    if (heal) updates['witchHealUsed'] = true;
+    if (killTargetUid != null) updates['witchKillUsed'] = true;
+    if (updates.isNotEmpty) await _roomDoc(code).update(updates);
+    await advanceWerewolfNightStep(code);
+  }
+
+  Future<void> submitCupidonChoice({
+    required String code,
+    required String uid,
+    required List<String> loverUids,
+  }) async {
+    await _roomDoc(code)
+        .collection('rounds')
+        .doc('0')
+        .collection('cupidonChoice')
+        .doc(uid)
+        .set({'loverUids': loverUids});
+    await _roomDoc(code).update({'loversUids': loverUids});
+    await advanceWerewolfNightStep(code);
+  }
+
+  Future<void> _resolveWerewolfDawn(String code) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data()!;
+    final roundIndex = (data['roundIndex'] as num).toInt();
+    final werewolfVictimUid = data['werewolfVictimUid'] as String?;
+    final salvateurProtectedUid = data['salvateurProtectedUid'] as String?;
+    final loversUids = List<String>.from(data['loversUids'] as List? ?? []);
+    var ancienImmunityUsed = data['ancienImmunityUsed'] as bool? ?? false;
+
+    final secretsSnap = await roomRef.collection('secrets').get();
+    final roleByUid = {
+      for (final d in secretsSnap.docs) d.id: d.data()['role'] as String,
+    };
+
+    final witchActionsSnap = await roomRef
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('witchActions')
+        .get();
+    var witchHealedThisRound = false;
+    String? witchKillTarget;
+    if (witchActionsSnap.docs.isNotEmpty) {
+      final witchData = witchActionsSnap.docs.first.data();
+      witchHealedThisRound = witchData['heal'] as bool? ?? false;
+      witchKillTarget = witchData['killTargetUid'] as String?;
+    }
+
+    final playersSnap = await _playersCol(code).get();
+    final aliveBefore = {
+      for (final d in playersSnap.docs)
+        if (Player.fromMap(d.id, d.data()).alive) d.id,
+    };
+
+    final deaths = <String>{};
+    if (werewolfVictimUid != null &&
+        werewolfVictimUid != salvateurProtectedUid &&
+        !witchHealedThisRound) {
+      deaths.add(werewolfVictimUid);
+    }
+    if (witchKillTarget != null) {
+      deaths.add(witchKillTarget);
+    }
+
+    final ancienUid = roleByUid.entries
+        .firstWhereOrNull((e) => e.value == 'ancien')
+        ?.key;
+    if (ancienUid != null &&
+        deaths.contains(ancienUid) &&
+        werewolfVictimUid == ancienUid &&
+        !ancienImmunityUsed) {
+      deaths.remove(ancienUid);
+      ancienImmunityUsed = true;
+    }
+
+    _applyWerewolfLoversChain(deaths, loversUids);
+    final trulyDead = deaths.where(aliveBefore.contains).toList();
+
+    final batch = _db.batch();
+    for (final uid in trulyDead) {
+      batch.update(_playersCol(code).doc(uid), {
+        'alive': false,
+        'eliminatedAtQuestion': roundIndex,
+      });
+    }
+    batch.update(roomRef, {
+      'lastNightDeaths': trulyDead,
+      'salvateurLastProtectedUid': salvateurProtectedUid,
+      'salvateurProtectedUid': null,
+      'ancienImmunityUsed': ancienImmunityUsed,
+      'chainDeaths': <String>[],
+    });
+    await batch.commit();
+
+    final remainingAlive = {...aliveBefore}..removeAll(trulyDead);
+    final winner = _checkWerewolfWinner(
+      aliveUids: remainingAlive,
+      roleByUid: roleByUid,
+      loversUids: loversUids,
+    );
+    if (winner != null) {
+      await roomRef.update({
+        'status': WerewolfStatus.finished.name,
+        'winner': winner,
+      });
+      return;
+    }
+
+    final chasseurDead = trulyDead.firstWhereOrNull(
+      (uid) => roleByUid[uid] == 'chasseur',
+    );
+    if (chasseurDead != null) {
+      await roomRef.update({
+        'status': WerewolfStatus.hunterRevenge.name,
+        'pendingActorUid': chasseurDead,
+        'afterPending': WerewolfStatus.dayReveal.name,
+      });
+    } else {
+      await roomRef.update({'status': WerewolfStatus.dayReveal.name});
+    }
+  }
+
+  Future<void> submitHunterRevenge({
+    required String code,
+    required String hunterUid,
+    required String targetUid,
+  }) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data()!;
+    if (data['status'] != WerewolfStatus.hunterRevenge.name) return;
+    if (data['pendingActorUid'] != hunterUid) return;
+    final roundIndex = (data['roundIndex'] as num).toInt();
+    final loversUids = List<String>.from(data['loversUids'] as List? ?? []);
+    final afterPending = werewolfStatusFromString(
+      data['afterPending'] as String,
+    );
+    final existingChainDeaths = List<String>.from(
+      data['chainDeaths'] as List? ?? [],
+    );
+
+    final secretsSnap = await roomRef.collection('secrets').get();
+    final roleByUid = {
+      for (final d in secretsSnap.docs) d.id: d.data()['role'] as String,
+    };
+    final playersSnap = await _playersCol(code).get();
+    final aliveBefore = {
+      for (final d in playersSnap.docs)
+        if (Player.fromMap(d.id, d.data()).alive) d.id,
+    };
+
+    final deaths = <String>{targetUid};
+    _applyWerewolfLoversChain(deaths, loversUids);
+    final trulyDead = deaths.where(aliveBefore.contains).toList();
+
+    final batch = _db.batch();
+    for (final uid in trulyDead) {
+      batch.update(_playersCol(code).doc(uid), {
+        'alive': false,
+        'eliminatedAtQuestion': roundIndex,
+      });
+    }
+    batch.update(roomRef, {
+      'chainDeaths': [...existingChainDeaths, ...trulyDead],
+    });
+    await batch.commit();
+
+    final remainingAlive = {...aliveBefore}..removeAll(trulyDead);
+    final winner = _checkWerewolfWinner(
+      aliveUids: remainingAlive,
+      roleByUid: roleByUid,
+      loversUids: loversUids,
+    );
+    if (winner != null) {
+      await roomRef.update({
+        'status': WerewolfStatus.finished.name,
+        'winner': winner,
+        'pendingActorUid': null,
+      });
+      return;
+    }
+
+    final anotherHunter = trulyDead.firstWhereOrNull(
+      (uid) => uid != hunterUid && roleByUid[uid] == 'chasseur',
+    );
+    if (anotherHunter != null) {
+      await roomRef.update({'pendingActorUid': anotherHunter});
+    } else {
+      await roomRef.update({
+        'status': afterPending.name,
+        'pendingActorUid': null,
+        'afterPending': null,
+      });
+    }
+  }
+
+  /// Host-only (enforced client-side): opens the village vote after the
+  /// dawn reveal has been shown.
+  Future<void> openWerewolfDayVote(String code) async {
+    await _roomDoc(code).update({'status': WerewolfStatus.dayVote.name});
+  }
+
+  Future<void> submitWerewolfDayVote({
+    required String code,
+    required String uid,
+    required int roundIndex,
+    required String votedFor,
+  }) async {
+    await _roomDoc(code)
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('dayVotes')
+        .doc(uid)
+        .set({'votedFor': votedFor});
+  }
+
+  Stream<Map<String, String>> werewolfDayVotesStream(
+    String code,
+    int roundIndex,
+  ) {
+    return _roomDoc(code)
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('dayVotes')
         .snapshots()
         .map(
           (snap) => {
-            for (final d in snap.docs)
-              d.id: CarPosition(
-                x: (d.data()['x'] as num).toDouble(),
-                y: (d.data()['y'] as num).toDouble(),
-                heading: (d.data()['heading'] as num?)?.toDouble() ?? 0,
-              ),
+            for (final d in snap.docs) d.id: d.data()['votedFor'] as String,
+          },
+        );
+  }
+
+  /// Host-only (enforced client-side): tallies the village's vote and
+  /// resolves every consequence (Idiot du Village surviving, Ancien
+  /// stripping village powers, Bouc Émissaire absorbing a tie, Chasseur's
+  /// revenge, lovers' heartbreak, win conditions).
+  Future<void> tallyWerewolfDayVote(String code) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data()!;
+    final roundIndex = (data['roundIndex'] as num).toInt();
+    final disenfranchised = List<String>.from(
+      data['disenfranchisedUids'] as List? ?? [],
+    );
+    final villagePowersLost = data['villagePowersLost'] as bool? ?? false;
+    final roleEnabled = Map<String, dynamic>.from(
+      data['roleEnabled'] as Map? ?? {},
+    ).map((k, v) => MapEntry(k, v as bool));
+
+    final votesSnap = await roomRef
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('dayVotes')
+        .get();
+    final tally = <String, int>{};
+    for (final d in votesSnap.docs) {
+      if (disenfranchised.contains(d.id)) continue;
+      final target = d.data()['votedFor'] as String;
+      tally[target] = (tally[target] ?? 0) + 1;
+    }
+
+    final secretsSnap = await roomRef.collection('secrets').get();
+    final roleByUid = {
+      for (final d in secretsSnap.docs) d.id: d.data()['role'] as String,
+    };
+    final playersSnap = await _playersCol(code).get();
+    final aliveBefore = {
+      for (final d in playersSnap.docs)
+        if (Player.fromMap(d.id, d.data()).alive) d.id,
+    };
+
+    String? eliminated;
+    var tie = false;
+    if (tally.isNotEmpty) {
+      final maxVotes = tally.values.fold(0, (m, v) => v > m ? v : m);
+      final top = tally.entries
+          .where((e) => e.value == maxVotes)
+          .map((e) => e.key)
+          .toList();
+      if (top.length == 1) {
+        eliminated = top.first;
+      } else {
+        tie = true;
+        if (!villagePowersLost && (roleEnabled['boucEmissaire'] ?? false)) {
+          eliminated = roleByUid.entries
+              .firstWhereOrNull(
+                (e) =>
+                    e.value == 'boucEmissaire' && aliveBefore.contains(e.key),
+              )
+              ?.key;
+        }
+      }
+    }
+
+    if (eliminated == null) {
+      await roomRef.update({
+        'status': WerewolfStatus.voteReveal.name,
+        'lastVoteEliminated': null,
+        'lastVoteTie': tie,
+        'lastVoteIdiotSurvived': false,
+        'chainDeaths': <String>[],
+      });
+      return;
+    }
+
+    if (roleByUid[eliminated] == 'idiotDuVillage' && !villagePowersLost) {
+      await roomRef.update({
+        'status': WerewolfStatus.voteReveal.name,
+        'lastVoteEliminated': null,
+        'lastVoteTie': tie,
+        'lastVoteIdiotSurvived': true,
+        'disenfranchisedUids': [...disenfranchised, eliminated],
+        'chainDeaths': <String>[],
+      });
+      return;
+    }
+
+    final deaths = <String>{eliminated};
+    final loversUids = List<String>.from(data['loversUids'] as List? ?? []);
+    _applyWerewolfLoversChain(deaths, loversUids);
+    final trulyDead = deaths.where(aliveBefore.contains).toList();
+
+    final batch = _db.batch();
+    for (final uid in trulyDead) {
+      batch.update(_playersCol(code).doc(uid), {
+        'alive': false,
+        'eliminatedAtQuestion': roundIndex,
+      });
+    }
+    final newVillagePowersLost =
+        villagePowersLost || roleByUid[eliminated] == 'ancien';
+    batch.update(roomRef, {
+      'lastVoteEliminated': eliminated,
+      'lastVoteTie': tie,
+      'lastVoteIdiotSurvived': false,
+      'villagePowersLost': newVillagePowersLost,
+      'chainDeaths': <String>[],
+    });
+    await batch.commit();
+
+    final remainingAlive = {...aliveBefore}..removeAll(trulyDead);
+    final winner = _checkWerewolfWinner(
+      aliveUids: remainingAlive,
+      roleByUid: roleByUid,
+      loversUids: loversUids,
+    );
+    if (winner != null) {
+      await roomRef.update({
+        'status': WerewolfStatus.finished.name,
+        'winner': winner,
+      });
+      return;
+    }
+
+    final chasseurDead = trulyDead.firstWhereOrNull(
+      (uid) => roleByUid[uid] == 'chasseur',
+    );
+    if (chasseurDead != null) {
+      await roomRef.update({
+        'status': WerewolfStatus.hunterRevenge.name,
+        'pendingActorUid': chasseurDead,
+        'afterPending': WerewolfStatus.voteReveal.name,
+      });
+    } else {
+      await roomRef.update({'status': WerewolfStatus.voteReveal.name});
+    }
+  }
+
+  Future<void> startNextWerewolfRound(String code) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data()!;
+    final roundIndex = (data['roundIndex'] as num).toInt();
+    final roleEnabled = Map<String, dynamic>.from(
+      data['roleEnabled'] as Map? ?? {},
+    ).map((k, v) => MapEntry(k, v as bool));
+    final villagePowersLost = data['villagePowersLost'] as bool? ?? false;
+
+    final secretsSnap = await roomRef.collection('secrets').get();
+    final roleByUid = {
+      for (final d in secretsSnap.docs) d.id: d.data()['role'] as String,
+    };
+    final playersSnap = await _playersCol(code).get();
+    final aliveUids = {
+      for (final d in playersSnap.docs)
+        if (Player.fromMap(d.id, d.data()).alive) d.id,
+    };
+
+    final nextRound = roundIndex + 1;
+    final nightOrder = _computeWerewolfNightOrder(
+      roundIndex: nextRound,
+      roleEnabled: roleEnabled,
+      roleByUid: roleByUid,
+      aliveUids: aliveUids,
+      villagePowersLost: villagePowersLost,
+    );
+
+    await roomRef.update({
+      'status': WerewolfStatus.night.name,
+      'roundIndex': nextRound,
+      'nightOrder': nightOrder,
+      'nightStepIndex': 0,
+      'werewolfVictimUid': null,
+    });
+  }
+
+  Stream<WerewolfRoom?> werewolfRoomStream(String code) {
+    return _roomDoc(code).snapshots().map(
+      (snap) => snap.exists ? WerewolfRoom.fromMap(code, snap.data()!) : null,
+    );
+  }
+
+  Stream<String?> roleStream(String code, String uid) {
+    return _roomDoc(code)
+        .collection('secrets')
+        .doc(uid)
+        .snapshots()
+        .map((s) => s.data()?['role'] as String?);
+  }
+
+  /// Werewolves recognise each other on the first night, same as around a
+  /// real table — this reads every player whose role is 'loupGarou',
+  /// which the security rules only allow for a requester who is
+  /// themselves a werewolf.
+  Stream<List<String>> wolfTeammatesStream(String code) {
+    return _roomDoc(code)
+        .collection('secrets')
+        .where('role', isEqualTo: 'loupGarou')
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => d.id).toList());
+  }
+
+  Stream<Map<String, String>> wolfVotesStream(String code, int roundIndex) {
+    return _roomDoc(code)
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('wolfVotes')
+        .snapshots()
+        .map(
+          (snap) => {
+            for (final d in snap.docs) d.id: d.data()['votedFor'] as String,
           },
         );
   }

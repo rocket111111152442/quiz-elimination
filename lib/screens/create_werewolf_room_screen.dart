@@ -1,21 +1,20 @@
 import 'package:flutter/material.dart';
 
-import '../models/game_type.dart';
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
-import 'player_lobby_screen.dart';
-import 'undercover_player_screen.dart';
 import 'werewolf_game_screen.dart';
 
-class JoinRoomScreen extends StatefulWidget {
-  const JoinRoomScreen({super.key});
+/// Unlike the quiz/Undercover host, the Loup-Garou host also plays — so
+/// this screen just asks for their name before creating the room.
+class CreateWerewolfRoomScreen extends StatefulWidget {
+  const CreateWerewolfRoomScreen({super.key});
 
   @override
-  State<JoinRoomScreen> createState() => _JoinRoomScreenState();
+  State<CreateWerewolfRoomScreen> createState() =>
+      _CreateWerewolfRoomScreenState();
 }
 
-class _JoinRoomScreenState extends State<JoinRoomScreen> {
-  final _codeController = TextEditingController();
+class _CreateWerewolfRoomScreenState extends State<CreateWerewolfRoomScreen> {
   final _nameController = TextEditingController();
   final _roomService = RoomService();
   final _authService = AuthService();
@@ -24,16 +23,14 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
 
   @override
   void dispose() {
-    _codeController.dispose();
     _nameController.dispose();
     super.dispose();
   }
 
-  Future<void> _join() async {
-    final code = _codeController.text.trim().toUpperCase();
+  Future<void> _create() async {
     final name = _nameController.text.trim();
-    if (code.isEmpty || name.isEmpty) {
-      setState(() => _error = 'Renseigne le code et ton pseudo.');
+    if (name.isEmpty) {
+      setState(() => _error = 'Renseigne ton pseudo.');
       return;
     }
     setState(() {
@@ -42,23 +39,14 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
     });
     try {
       final uid = await _authService.ensureSignedIn();
-      final gameType = await _roomService.joinRoom(
-        code: code,
-        uid: uid,
-        name: name,
+      final code = await _roomService.createWerewolfRoom(
+        hostUid: uid,
+        hostName: name,
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => switch (gameType) {
-            GameType.undercover => UndercoverPlayerScreen(code: code),
-            GameType.werewolf => WerewolfGameScreen(code: code),
-            GameType.quiz => PlayerLobbyScreen(code: code),
-          },
-        ),
+        MaterialPageRoute(builder: (_) => WerewolfGameScreen(code: code)),
       );
-    } on RoomNotFoundException {
-      setState(() => _error = 'Aucune partie avec ce code.');
     } catch (e) {
       setState(() => _error = 'Erreur : $e');
     } finally {
@@ -69,21 +57,20 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Rejoindre')),
+      appBar: AppBar(title: const Text('Créer un Loup-Garou')),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              TextField(
-                controller: _codeController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
-                  labelText: 'Code de la partie',
-                ),
+              const Text(
+                '🐺 Tu vas aussi jouer dans cette partie, en plus de la '
+                'mener !',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: Colors.white70),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
               TextField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'Ton pseudo'),
@@ -96,14 +83,14 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _loading ? null : _join,
+                  onPressed: _loading ? null : _create,
                   child: _loading
                       ? const SizedBox(
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Rejoindre'),
+                      : const Text('Créer la salle'),
                 ),
               ),
             ],

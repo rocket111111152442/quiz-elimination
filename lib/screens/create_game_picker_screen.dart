@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
-import 'create_racing_room_screen.dart';
 import 'create_room_screen.dart';
 import 'create_undercover_room_screen.dart';
+import 'create_werewolf_room_screen.dart';
 
 /// Lets the host choose which mini-jeu to host before creating a room.
 /// Every mini-game added to the app should get an entry here.
@@ -41,13 +41,13 @@ class CreateGamePickerScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _GameCard(
-              emoji: '🏍️',
-              title: 'Course de Motos',
-              subtitle: 'Choisis ta moto et fonce sur la piste, évite le mini-boss et les obstacles !',
+              emoji: '🐺',
+              title: 'Loup-Garou',
+              subtitle: 'L\'appli mène la partie : nuits, votes, pouvoirs secrets. Choisis les cartes et joue toi aussi !',
               color: Colors.orangeAccent,
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => const CreateRacingRoomScreen(),
+                  builder: (_) => const CreateWerewolfRoomScreen(),
                 ),
               ),
             ),
