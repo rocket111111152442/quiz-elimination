@@ -5,6 +5,7 @@ import '../models/undercover_room.dart';
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import '../theme.dart';
+import '../widgets/inactivity_badge.dart';
 import '../widgets/undercover_results_view.dart';
 
 /// Single reactive screen driving the whole Undercover game for a player:
@@ -186,6 +187,11 @@ class _ClueView extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
+          if (room.phaseStartedAt != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: InactivityBadge(since: room.phaseStartedAt!.toDate()),
+            ),
           Text(
             'Manche ${room.roundIndex + 1}',
             style: const TextStyle(color: Colors.white70),
@@ -369,6 +375,11 @@ class _VotingView extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
+          if (room.phaseStartedAt != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: InactivityBadge(since: room.phaseStartedAt!.toDate()),
+            ),
           const Text(
             'Qui est l\'Undercover ?',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
@@ -441,6 +452,11 @@ class _MisterWhiteGuessView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          if (room.phaseStartedAt != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: InactivityBadge(since: room.phaseStartedAt!.toDate()),
+            ),
           const Text(
             '🎩 Tu es démasqué, mais il te reste une chance !',
             textAlign: TextAlign.center,

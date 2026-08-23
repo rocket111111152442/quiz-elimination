@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 enum UndercoverStatus {
   lobby,
   clue,
@@ -27,6 +29,7 @@ class UndercoverRoom {
   final bool tieThisRound;
   final String? winner;
   final bool includeMisterWhite;
+  final Timestamp? phaseStartedAt;
 
   const UndercoverRoom({
     required this.code,
@@ -41,6 +44,7 @@ class UndercoverRoom {
     required this.tieThisRound,
     this.winner,
     this.includeMisterWhite = false,
+    this.phaseStartedAt,
   });
 
   String? get currentTurnUid =>
@@ -62,5 +66,6 @@ class UndercoverRoom {
         tieThisRound: map['tieThisRound'] as bool? ?? false,
         winner: map['winner'] as String?,
         includeMisterWhite: map['includeMisterWhite'] as bool? ?? false,
+        phaseStartedAt: map['phaseStartedAt'] as Timestamp?,
       );
 }

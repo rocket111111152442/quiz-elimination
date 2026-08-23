@@ -5,6 +5,7 @@ import '../models/undercover_room.dart';
 import '../services/room_service.dart';
 import '../services/sound_service.dart';
 import '../theme.dart';
+import '../widgets/inactivity_badge.dart';
 import '../widgets/player_list_tile.dart';
 import '../widgets/room_qr_code.dart';
 import '../widgets/undercover_results_view.dart';
@@ -78,6 +79,11 @@ class _UndercoverHostScreenState extends State<UndercoverHostScreen> {
                       onAdvance: () => _guardedAction(
                         () => _roomService.advanceClueTurn(widget.code),
                       ),
+                      onInactivityExpired: () => _guardedAction(
+                        () => _roomService.resolveUndercoverInactivity(
+                          widget.code,
+                        ),
+                      ),
                     );
                   case UndercoverStatus.voting:
                     return _VotingHostView(
@@ -87,6 +93,11 @@ class _UndercoverHostScreenState extends State<UndercoverHostScreen> {
                       roomService: _roomService,
                       onTally: () => _guardedAction(
                         () => _roomService.tallyVotesAndAdvance(widget.code),
+                      ),
+                      onInactivityExpired: () => _guardedAction(
+                        () => _roomService.resolveUndercoverInactivity(
+                          widget.code,
+                        ),
                       ),
                     );
                   case UndercoverStatus.misterWhiteGuess:
@@ -98,6 +109,11 @@ class _UndercoverHostScreenState extends State<UndercoverHostScreen> {
                       roomService: _roomService,
                       onResolve: () => _guardedAction(
                         () => _roomService.resolveMisterWhiteGuess(widget.code),
+                      ),
+                      onInactivityExpired: () => _guardedAction(
+                        () => _roomService.resolveUndercoverInactivity(
+                          widget.code,
+                        ),
                       ),
                     );
                   case UndercoverStatus.reveal:
@@ -202,6 +218,7 @@ class _ClueHostView extends StatelessWidget {
   final bool loading;
   final RoomService roomService;
   final VoidCallback onAdvance;
+  final VoidCallback onInactivityExpired;
 
   const _ClueHostView({
     required this.code,
@@ -210,6 +227,7 @@ class _ClueHostView extends StatelessWidget {
     required this.loading,
     required this.roomService,
     required this.onAdvance,
+    required this.onInactivityExpired,
   });
 
   @override
@@ -222,6 +240,14 @@ class _ClueHostView extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
+          if (room.phaseStartedAt != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: InactivityBadge(
+                since: room.phaseStartedAt!.toDate(),
+                onExpired: loading ? null : onInactivityExpired,
+              ),
+            ),
           Text(
             'Manche ${room.roundIndex + 1}',
             style: const TextStyle(color: Colors.white70),
@@ -278,6 +304,7 @@ class _VotingHostView extends StatelessWidget {
   final bool loading;
   final RoomService roomService;
   final VoidCallback onTally;
+  final VoidCallback onInactivityExpired;
 
   const _VotingHostView({
     required this.code,
@@ -285,6 +312,7 @@ class _VotingHostView extends StatelessWidget {
     required this.loading,
     required this.roomService,
     required this.onTally,
+    required this.onInactivityExpired,
   });
 
   @override
@@ -293,6 +321,14 @@ class _VotingHostView extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
+          if (room.phaseStartedAt != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: InactivityBadge(
+                since: room.phaseStartedAt!.toDate(),
+                onExpired: loading ? null : onInactivityExpired,
+              ),
+            ),
           const Text(
             'Qui est l\'Undercover ?',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
@@ -337,6 +373,7 @@ class _MisterWhiteGuessHostView extends StatelessWidget {
   final bool loading;
   final RoomService roomService;
   final VoidCallback onResolve;
+  final VoidCallback onInactivityExpired;
 
   const _MisterWhiteGuessHostView({
     required this.code,
@@ -345,6 +382,7 @@ class _MisterWhiteGuessHostView extends StatelessWidget {
     required this.loading,
     required this.roomService,
     required this.onResolve,
+    required this.onInactivityExpired,
   });
 
   @override
@@ -358,6 +396,14 @@ class _MisterWhiteGuessHostView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          if (room.phaseStartedAt != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: InactivityBadge(
+                since: room.phaseStartedAt!.toDate(),
+                onExpired: loading ? null : onInactivityExpired,
+              ),
+            ),
           Text(
             '🎩 $name est Mister White !',
             textAlign: TextAlign.center,

@@ -263,6 +263,7 @@ class RoomService {
       'tieThisRound': false,
       'winner': null,
       'pendingWinner': null,
+      'phaseStartedAt': FieldValue.serverTimestamp(),
     });
     await batch.commit();
   }
@@ -290,11 +291,48 @@ class RoomService {
     final currentTurnIndex = (data['currentTurnIndex'] as num).toInt();
     final nextIndex = currentTurnIndex + 1;
     if (nextIndex < playerOrder.length) {
-      await _roomDoc(code).update({'currentTurnIndex': nextIndex});
+      await _roomDoc(code).update({
+        'currentTurnIndex': nextIndex,
+        'phaseStartedAt': FieldValue.serverTimestamp(),
+      });
     } else {
-      await _roomDoc(
-        code,
-      ).update({'status': UndercoverStatus.voting.name, 'currentTurnIndex': 0});
+      await _roomDoc(code).update({
+        'status': UndercoverStatus.voting.name,
+        'currentTurnIndex': 0,
+        'phaseStartedAt': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  /// Host-only: called when the small inactivity badge expires. During the
+  /// clue phase the stalling player is eliminated outright (same result as
+  /// if they'd just been voted out); during voting or Mister White's guess,
+  /// it simply forces the resolution the host button would otherwise
+  /// trigger, using whatever was submitted so far, so the game never gets
+  /// stuck waiting on someone who stepped away.
+  Future<void> resolveUndercoverInactivity(String code) async {
+    final roomSnap = await _roomDoc(code).get();
+    final data = roomSnap.data();
+    if (data == null) return;
+    final status = undercoverStatusFromString(data['status'] as String);
+    switch (status) {
+      case UndercoverStatus.clue:
+        final playerOrder = List<String>.from(data['playerOrder'] as List);
+        final currentTurnIndex = (data['currentTurnIndex'] as num).toInt();
+        if (currentTurnIndex < 0 || currentTurnIndex >= playerOrder.length) {
+          return;
+        }
+        await _finalizeUndercoverRoundResult(
+          code,
+          eliminated: playerOrder[currentTurnIndex],
+          tie: false,
+        );
+      case UndercoverStatus.voting:
+        await tallyVotesAndAdvance(code);
+      case UndercoverStatus.misterWhiteGuess:
+        await resolveMisterWhiteGuess(code);
+      default:
+        break;
     }
   }
 
@@ -322,7 +360,6 @@ class RoomService {
     final roomSnap = await roomRef.get();
     final data = roomSnap.data()!;
     final roundIndex = (data['roundIndex'] as num).toInt();
-    final playerOrder = List<String>.from(data['playerOrder'] as List);
 
     final votesSnap = await roomRef
         .collection('rounds')
@@ -341,6 +378,27 @@ class RoomService {
         .toList();
     final tie = maxVotes == 0 || topUids.length != 1;
     final eliminated = tie ? null : topUids.first;
+
+    await _finalizeUndercoverRoundResult(
+      code,
+      eliminated: eliminated,
+      tie: tie,
+    );
+  }
+
+  /// Shared by [tallyVotesAndAdvance] and [resolveUndercoverInactivity]:
+  /// removes [eliminated] (if any) from play, recomputes the win condition
+  /// and moves the room to the reveal (or Mister White guess) phase.
+  Future<void> _finalizeUndercoverRoundResult(
+    String code, {
+    required String? eliminated,
+    required bool tie,
+  }) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data()!;
+    final roundIndex = (data['roundIndex'] as num).toInt();
+    final playerOrder = List<String>.from(data['playerOrder'] as List);
     final remaining = eliminated == null
         ? playerOrder
         : playerOrder.where((p) => p != eliminated).toList();
@@ -373,6 +431,7 @@ class RoomService {
       'playerOrder': remaining,
       'winner': misterWhiteCaught ? null : computedWinner,
       'pendingWinner': misterWhiteCaught ? computedWinner : null,
+      'phaseStartedAt': FieldValue.serverTimestamp(),
     });
     if (eliminated != null) {
       batch.update(_playersCol(code).doc(eliminated), {
@@ -459,6 +518,7 @@ class RoomService {
       'currentTurnIndex': 0,
       'eliminatedThisRound': null,
       'tieThisRound': false,
+      'phaseStartedAt': FieldValue.serverTimestamp(),
     });
   }
 
