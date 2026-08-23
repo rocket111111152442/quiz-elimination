@@ -6,6 +6,7 @@ import '../data/word_bank.dart';
 import '../models/game_type.dart';
 import '../models/player.dart';
 import '../models/question.dart';
+import '../models/racing_room.dart';
 import '../models/room.dart';
 import '../models/undercover_room.dart';
 
@@ -155,6 +156,7 @@ class RoomService {
     required String hostUid,
     required String category,
     required int undercoverCount,
+    required bool includeMisterWhite,
   }) async {
     final code = await _findAvailableCode();
     await _roomDoc(code).set({
@@ -163,32 +165,44 @@ class RoomService {
       'status': UndercoverStatus.lobby.name,
       'category': category,
       'undercoverCount': undercoverCount,
+      'includeMisterWhite': includeMisterWhite,
       'roundIndex': 0,
       'playerOrder': <String>[],
       'currentTurnIndex': 0,
       'eliminatedThisRound': null,
       'tieThisRound': false,
       'winner': null,
+      'pendingWinner': null,
       'createdAt': FieldValue.serverTimestamp(),
     });
     return code;
   }
 
   /// Assigns roles/words to every joined player and starts round 0. Only
-  /// the host calls this, once, from the lobby.
+  /// the host calls this, once, from the lobby. Mister White is dealt like
+  /// an Undercover but receives no word at all — they have to bluff blind.
   Future<void> startUndercoverGame(String code) async {
     final roomSnap = await _roomDoc(code).get();
     final data = roomSnap.data()!;
     final category = data['category'] as String;
     final requestedUndercover = (data['undercoverCount'] as num).toInt();
+    final wantMisterWhite = data['includeMisterWhite'] as bool? ?? false;
 
     final playersSnap = await _playersCol(code).get();
     final uids = playersSnap.docs.map((d) => d.id).toList()..shuffle();
 
-    final maxUndercover = uids.length - 2 < 1 ? 1 : uids.length - 2;
-    final undercoverCount = requestedUndercover > maxUndercover
-        ? maxUndercover
-        : requestedUndercover;
+    final maxImpostors = uids.length - 2 < 1 ? 1 : uids.length - 2;
+    var undercoverCount = requestedUndercover;
+    var misterWhiteCount = wantMisterWhite ? 1 : 0;
+    while (undercoverCount + misterWhiteCount > maxImpostors) {
+      if (undercoverCount > 1) {
+        undercoverCount--;
+      } else if (misterWhiteCount > 0) {
+        misterWhiteCount = 0;
+      } else {
+        break;
+      }
+    }
 
     final candidates = category == 'Aléatoire'
         ? wordBank
@@ -196,14 +210,26 @@ class RoomService {
     final pair = candidates[Random().nextInt(candidates.length)];
 
     final rolesShuffled = [...uids]..shuffle();
-    final undercoverUids = rolesShuffled.take(undercoverCount).toSet();
+    final undercoverUids = rolesShuffled.sublist(0, undercoverCount).toSet();
+    final misterWhiteUids = rolesShuffled
+        .sublist(undercoverCount, undercoverCount + misterWhiteCount)
+        .toSet();
 
     final batch = _db.batch();
     for (final uid in uids) {
-      final isUndercover = undercoverUids.contains(uid);
+      final role = undercoverUids.contains(uid)
+          ? 'undercover'
+          : misterWhiteUids.contains(uid)
+          ? 'mister_white'
+          : 'civil';
+      final word = role == 'undercover'
+          ? pair.undercoverWord
+          : role == 'civil'
+          ? pair.civilWord
+          : '';
       batch.set(_roomDoc(code).collection('secrets').doc(uid), {
-        'role': isUndercover ? 'undercover' : 'civil',
-        'word': isUndercover ? pair.undercoverWord : pair.civilWord,
+        'role': role,
+        'word': word,
       });
     }
     batch.set(_roomDoc(code).collection('meta').doc('words'), {
@@ -219,6 +245,7 @@ class RoomService {
       'eliminatedThisRound': null,
       'tieThisRound': false,
       'winner': null,
+      'pendingWinner': null,
     });
     await batch.commit();
   }
@@ -269,7 +296,10 @@ class RoomService {
   }
 
   /// Host-only: tallies the round's votes, eliminates whoever got the most
-  /// (no elimination on a tie), and checks the win condition.
+  /// (no elimination on a tie), and checks the win condition. If the
+  /// eliminated player is Mister White, the game pauses on
+  /// [UndercoverStatus.misterWhiteGuess] instead of revealing the winner
+  /// straight away — they get one shot at guessing the civil word first.
   Future<void> tallyVotesAndAdvance(String code) async {
     final roomRef = _roomDoc(code);
     final roomSnap = await roomRef.get();
@@ -302,24 +332,30 @@ class RoomService {
     final roleByUid = {
       for (final doc in secretsSnap.docs) doc.id: doc.data()['role'] as String,
     };
-    final remainingUndercover = remaining
-        .where((p) => roleByUid[p] == 'undercover')
+    final remainingImpostors = remaining
+        .where((p) => roleByUid[p] != 'civil')
         .length;
-    final remainingCivil = remaining.length - remainingUndercover;
-    String? winner;
-    if (remainingUndercover == 0) {
-      winner = 'civils';
-    } else if (remainingUndercover >= remainingCivil) {
-      winner = 'undercover';
+    final remainingCivil = remaining.length - remainingImpostors;
+    String? computedWinner;
+    if (remainingImpostors == 0) {
+      computedWinner = 'civils';
+    } else if (remainingImpostors >= remainingCivil) {
+      computedWinner = 'imposteurs';
     }
+
+    final eliminatedRole = eliminated == null ? null : roleByUid[eliminated];
+    final misterWhiteCaught = eliminatedRole == 'mister_white';
 
     final batch = _db.batch();
     batch.update(roomRef, {
-      'status': UndercoverStatus.reveal.name,
+      'status': misterWhiteCaught
+          ? UndercoverStatus.misterWhiteGuess.name
+          : UndercoverStatus.reveal.name,
       'eliminatedThisRound': eliminated,
       'tieThisRound': tie,
       'playerOrder': remaining,
-      'winner': winner,
+      'winner': misterWhiteCaught ? null : computedWinner,
+      'pendingWinner': misterWhiteCaught ? computedWinner : null,
     });
     if (eliminated != null) {
       batch.update(_playersCol(code).doc(eliminated), {
@@ -328,6 +364,69 @@ class RoomService {
       });
     }
     await batch.commit();
+  }
+
+  Future<void> submitMisterWhiteGuess({
+    required String code,
+    required String uid,
+    required int roundIndex,
+    required String guess,
+  }) async {
+    await _roomDoc(code)
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('guesses')
+        .doc(uid)
+        .set({'guess': guess});
+  }
+
+  Stream<String?> misterWhiteGuessStream(
+    String code,
+    int roundIndex,
+    String uid,
+  ) {
+    return _roomDoc(code)
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('guesses')
+        .doc(uid)
+        .snapshots()
+        .map((s) => s.data()?['guess'] as String?);
+  }
+
+  /// Host-only: compares Mister White's guess against the civil word. A
+  /// correct guess steals the win outright; otherwise the win check from
+  /// [tallyVotesAndAdvance] (stored as `pendingWinner`) applies.
+  Future<void> resolveMisterWhiteGuess(String code) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data()!;
+    final roundIndex = (data['roundIndex'] as num).toInt();
+    final eliminated = data['eliminatedThisRound'] as String?;
+    final pendingWinner = data['pendingWinner'] as String?;
+    if (eliminated == null) return;
+
+    final guessSnap = await roomRef
+        .collection('rounds')
+        .doc('$roundIndex')
+        .collection('guesses')
+        .doc(eliminated)
+        .get();
+    final guess = (guessSnap.data()?['guess'] as String? ?? '')
+        .trim()
+        .toLowerCase();
+
+    final wordsSnap = await roomRef.collection('meta').doc('words').get();
+    final civilWord = (wordsSnap.data()?['civilWord'] as String? ?? '')
+        .trim()
+        .toLowerCase();
+
+    final correct = guess.isNotEmpty && guess == civilWord;
+    await roomRef.update({
+      'status': UndercoverStatus.reveal.name,
+      'winner': correct ? 'mister_white' : pendingWinner,
+      'pendingWinner': null,
+    });
   }
 
   Future<void> startNextUndercoverRound(String code) async {
@@ -405,6 +504,96 @@ class RoomService {
         .map(
           (snap) => {
             for (final d in snap.docs) d.id: d.data()['role'] as String,
+          },
+        );
+  }
+
+  // ---------------------------------------------------------------------
+  // Course de motos
+  // ---------------------------------------------------------------------
+
+  Future<String> createRacingRoom({required String hostUid}) async {
+    final code = await _findAvailableCode();
+    await _roomDoc(code).set({
+      'hostUid': hostUid,
+      'gameType': GameType.racing.name,
+      'status': RacingStatus.lobby.name,
+      'laps': 3,
+      'countdownStartedAt': null,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return code;
+  }
+
+  Future<void> setBike({
+    required String code,
+    required String uid,
+    required String bikeId,
+  }) async {
+    await _playersCol(code).doc(uid).update({'bike': bikeId});
+  }
+
+  /// Host-only: kicks off the pre-race countdown. Every client derives the
+  /// same race-start instant from this server timestamp, so no further
+  /// writes are needed once the race is actually rolling.
+  Future<void> startRace(String code) async {
+    await _roomDoc(code).update({
+      'status': RacingStatus.countdown.name,
+      'countdownStartedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> updatePosition({
+    required String code,
+    required String uid,
+    required double x,
+    required double y,
+    required double heading,
+  }) async {
+    await _roomDoc(code).collection('positions').doc(uid).set({
+      'x': x,
+      'y': y,
+      'heading': heading,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> updateLapProgress({
+    required String code,
+    required String uid,
+    required int lapsCompleted,
+    bool finished = false,
+    int? finishTimeMs,
+  }) async {
+    await _playersCol(code).doc(uid).update({
+      'lapsCompleted': lapsCompleted,
+      if (finished) 'finished': true,
+      'finishTimeMs': ?finishTimeMs,
+    });
+  }
+
+  Future<void> finishRacingGame(String code) async {
+    await _roomDoc(code).update({'status': RacingStatus.finished.name});
+  }
+
+  Stream<RacingRoom?> racingRoomStream(String code) {
+    return _roomDoc(code).snapshots().map(
+      (snap) => snap.exists ? RacingRoom.fromMap(code, snap.data()!) : null,
+    );
+  }
+
+  Stream<Map<String, CarPosition>> positionsStream(String code) {
+    return _roomDoc(code)
+        .collection('positions')
+        .snapshots()
+        .map(
+          (snap) => {
+            for (final d in snap.docs)
+              d.id: CarPosition(
+                x: (d.data()['x'] as num).toDouble(),
+                y: (d.data()['y'] as num).toDouble(),
+                heading: (d.data()['heading'] as num?)?.toDouble() ?? 0,
+              ),
           },
         );
   }

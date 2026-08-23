@@ -103,15 +103,50 @@ joueur·se **Undercover** qui reçoit un mot proche mais différent (ex. Civils
    pour désigner qui est, selon lui, l'Undercover. L'hôte appuie sur **Voir
    le résultat du vote** : le joueur avec le plus de votes est éliminé (en
    cas d'égalité, personne n'est éliminé ce tour-ci).
-6. La partie continue en manches jusqu'à ce que tous les Undercover soient
+6. La partie continue en manches jusqu'à ce que tous les imposteurs soient
    démasqués (victoire des civils) ou qu'ils soient à égalité ou en
    supériorité numérique face aux civils restants (victoire des
-   Undercover). L'écran final révèle les deux mots et le rôle de chacun.
+   imposteurs). L'écran final révèle les deux mots et le rôle de chacun.
 
 La banque de mots intégrée (`lib/data/word_bank.dart`) contient 100 paires
 de mots réparties en 10 catégories (nourriture, animaux, lieux, sports,
 technologie, métiers, transports, objets du quotidien, nature, loisirs) —
 pour en ajouter, il suffit d'ajouter des `WordPair(...)` dans ce fichier.
+
+**Mister White** (optionnel, à activer à la création du salon) : ce joueur
+ne reçoit aucun mot du tout et doit bluffer uniquement grâce aux indices
+des autres. S'il est démasqué par un vote, il a une dernière chance avant
+que la partie continue : deviner le mot des civils. S'il trouve, il gagne
+la partie à lui tout seul, peu importe le nombre de joueurs restants.
+
+### Course de Motos
+
+Course multijoueur en 2D vue du dessus, jusqu'à 8 pilotes en même temps.
+
+1. L'hôte choisit **Course de Motos** — aucune configuration nécessaire,
+   la salle est créée directement.
+2. Les élèves rejoignent avec le code et choisissent leur moto parmi 4
+   modèles aux caractéristiques différentes (vitesse, accélération,
+   virage).
+3. L'hôte **Démarre la course** : un décompte de 3 secondes s'affiche chez
+   tout le monde, identique sur tous les écrans.
+4. Chacun pilote sa moto avec deux boutons **◀ ▶** pour tourner et un
+   bouton **GAZ** à maintenir pour accélérer — pensé pour être jouable au
+   pouce sur tablette ou téléphone. Le circuit contient des flaques
+   d'huile qui ralentissent, ainsi qu'un mini-boss qui patrouille sur une
+   portion du circuit et repousse quiconque le touche.
+5. Le premier arrivé après le nombre de tours prévu (3 par défaut) gagne.
+   L'hôte suit un classement en direct et clique sur **Voir les
+   résultats** une fois la course jugée terminée.
+
+Techniquement, ce mini-jeu n'utilise aucun moteur de jeu externe (pas de
+Flame, pas de Realtime Database) : tout est fait avec les outils déjà
+présents dans Flutter (`CustomPainter` + un `Ticker` pour la boucle de
+jeu), et la position de chaque joueur est simplement synchronisée via
+Firestore plusieurs fois par seconde — ça évite d'avoir un nouveau
+service Firebase à activer. Le circuit, les motos et les obstacles sont
+définis dans `lib/game/race_track.dart` et `lib/data/bike_specs.dart` si
+tu veux les ajuster (vitesse, forme du circuit, etc.).
 
 ## 4. Son et musique
 
@@ -196,21 +231,23 @@ continuer à jouer.
 ```
 lib/
   data/         # question_bank.dart (~190 questions), word_bank.dart
-                # (100 paires de mots Undercover)
-  models/       # Question, Room, Player, GameType, UndercoverRoom
-  services/     # AuthService, RoomService (Firestore, quiz + Undercover),
+                # (100 paires de mots Undercover), bike_specs.dart
+  game/         # race_track.dart — circuit, obstacles, mini-boss
+  models/       # Question, Room, Player, GameType, UndercoverRoom,
+                # RacingRoom
+  services/     # AuthService, RoomService (Firestore, les 3 mini-jeux),
                 # SoundService, AdService
   screens/      # Home, choix du mini-jeu, création/rejoindre salle,
-                # banque de questions, écrans hôte/joueur (quiz + Undercover)
+                # banque de questions, écrans hôte/joueur des 3 mini-jeux
   widgets/      # Boutons de réponse, minuteur, liste de joueurs, résultats
-                # (quiz + Undercover), bannière publicitaire
+                # des 3 mini-jeux, bannière publicitaire
 assets/sfx/     # Effets sonores (générés, libres de droits)
 assets/music/   # Ta musique de fond (à ajouter toi-même, voir section 4)
 firestore.rules # Règles de sécurité (l'hôte contrôle la partie, chaque
                 # joueur ne peut écrire que sa propre réponse / son propre
-                # indice / son propre vote)
+                # indice / son propre vote / sa propre position)
 ```
 
-D'autres mini-jeux viendront s'ajouter au même menu de choix à l'avenir
-(par exemple une course de moto/kart multijoueur) — chacun aura son propre
-écran hôte/joueur, exactement comme le Quiz et l'Undercover.
+D'autres mini-jeux viendront s'ajouter au même menu de choix à l'avenir —
+chacun aura son propre écran hôte/joueur, exactement comme les trois
+mini-jeux actuels.

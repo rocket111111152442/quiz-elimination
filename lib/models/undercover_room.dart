@@ -1,4 +1,11 @@
-enum UndercoverStatus { lobby, clue, voting, reveal, finished }
+enum UndercoverStatus {
+  lobby,
+  clue,
+  voting,
+  reveal,
+  misterWhiteGuess,
+  finished,
+}
 
 UndercoverStatus undercoverStatusFromString(String value) {
   return UndercoverStatus.values.firstWhere(
@@ -19,6 +26,7 @@ class UndercoverRoom {
   final String? eliminatedThisRound;
   final bool tieThisRound;
   final String? winner;
+  final bool includeMisterWhite;
 
   const UndercoverRoom({
     required this.code,
@@ -32,6 +40,7 @@ class UndercoverRoom {
     this.eliminatedThisRound,
     required this.tieThisRound,
     this.winner,
+    this.includeMisterWhite = false,
   });
 
   String? get currentTurnUid =>
@@ -52,5 +61,6 @@ class UndercoverRoom {
         eliminatedThisRound: map['eliminatedThisRound'] as String?,
         tieThisRound: map['tieThisRound'] as bool? ?? false,
         winner: map['winner'] as String?,
+        includeMisterWhite: map['includeMisterWhite'] as bool? ?? false,
       );
 }

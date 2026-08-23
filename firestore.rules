@@ -25,6 +25,12 @@ service cloud.firestore {
           (request.auth.uid == playerId &&
            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers']))
           ||
+          // ...ou, dans la course de motos, son propre choix de moto et sa
+          // progression (tours, arrivée)...
+          (request.auth.uid == playerId &&
+           get(/databases/$(database)/documents/rooms/$(roomCode)).data.gameType == 'racing' &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bike', 'lapsCompleted', 'finished', 'finishTimeMs']))
+          ||
           // ...l'hôte seul peut changer alive / eliminatedAtQuestion (élimination).
           (get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid)
         );
@@ -73,6 +79,22 @@ service cloud.firestore {
           allow update: if false;
           allow delete: if false;
         }
+
+        // Undercover : la devinette de Mister White (un seul joueur écrit,
+        // celui qui vient d'être démasqué).
+        match /guesses/{uid} {
+          allow read: if request.auth != null;
+          allow create: if request.auth != null && request.auth.uid == uid;
+          allow update: if false;
+          allow delete: if false;
+        }
+      }
+
+      // Course de motos : position en temps réel de chaque joueur, écrite
+      // très fréquemment par son propriétaire uniquement.
+      match /positions/{uid} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == uid;
       }
     }
   }

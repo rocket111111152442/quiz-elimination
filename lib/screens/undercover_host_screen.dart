@@ -88,6 +88,17 @@ class _UndercoverHostScreenState extends State<UndercoverHostScreen> {
                         () => _roomService.tallyVotesAndAdvance(widget.code),
                       ),
                     );
+                  case UndercoverStatus.misterWhiteGuess:
+                    return _MisterWhiteGuessHostView(
+                      code: widget.code,
+                      room: room,
+                      players: players,
+                      loading: _actionInFlight,
+                      roomService: _roomService,
+                      onResolve: () => _guardedAction(
+                        () => _roomService.resolveMisterWhiteGuess(widget.code),
+                      ),
+                    );
                   case UndercoverStatus.reveal:
                     return _RevealHostView(
                       room: room,
@@ -316,6 +327,79 @@ class _VotingHostView extends StatelessWidget {
   }
 }
 
+class _MisterWhiteGuessHostView extends StatelessWidget {
+  final String code;
+  final UndercoverRoom room;
+  final List<Player> players;
+  final bool loading;
+  final RoomService roomService;
+  final VoidCallback onResolve;
+
+  const _MisterWhiteGuessHostView({
+    required this.code,
+    required this.room,
+    required this.players,
+    required this.loading,
+    required this.roomService,
+    required this.onResolve,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final name = players
+        .where((p) => p.uid == room.eliminatedThisRound)
+        .map((p) => p.name)
+        .firstOrNull;
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '🎩 $name est Mister White !',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Dernière chance : deviner le mot des civils pour gagner quand même.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 24),
+          StreamBuilder<String?>(
+            stream: roomService.misterWhiteGuessStream(
+              code,
+              room.roundIndex,
+              room.eliminatedThisRound ?? '',
+            ),
+            builder: (context, snap) {
+              final guess = snap.data;
+              return Text(
+                guess == null
+                    ? 'En attente de la devinette...'
+                    : 'Devinette : $guess',
+                style: const TextStyle(fontSize: 18),
+              );
+            },
+          ),
+          const Spacer(),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: loading ? null : onResolve,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.danger,
+              ),
+              child: const Text('Voir le résultat de la devinette'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RevealHostView extends StatelessWidget {
   final UndercoverRoom room;
   final List<Player> players;
@@ -364,10 +448,16 @@ class _RevealHostView extends StatelessWidget {
               '🎉 Les civils gagnent !',
               style: TextStyle(fontSize: 20, color: AppColors.success),
             )
-          else if (room.winner == 'undercover')
+          else if (room.winner == 'imposteurs')
             const Text(
-              '🕵️ Les Undercover gagnent !',
+              '🕵️ Les imposteurs gagnent !',
               style: TextStyle(fontSize: 20, color: AppColors.danger),
+            )
+          else if (room.winner == 'mister_white')
+            const Text(
+              '🎩 Mister White a deviné le mot et gagne la partie !',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 20, color: Colors.amber),
             ),
           const SizedBox(height: 32),
           SizedBox(

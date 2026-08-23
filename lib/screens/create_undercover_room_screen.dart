@@ -19,6 +19,7 @@ class _CreateUndercoverRoomScreenState
   final _authService = AuthService();
   String _category = 'Aléatoire';
   int _undercoverCount = 1;
+  bool _includeMisterWhite = false;
   bool _loading = false;
   String? _error;
 
@@ -33,6 +34,7 @@ class _CreateUndercoverRoomScreenState
         hostUid: uid,
         category: _category,
         undercoverCount: _undercoverCount,
+        includeMisterWhite: _includeMisterWhite,
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
@@ -104,6 +106,22 @@ class _CreateUndercoverRoomScreenState
               Text(
                 'Ajusté automatiquement si le nombre de joueurs est trop petit.',
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+              ),
+              const SizedBox(height: 20),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _includeMisterWhite,
+                onChanged: (value) =>
+                    setState(() => _includeMisterWhite = value),
+                title: const Text(
+                  'Ajouter Mister White',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: const Text(
+                  'Un joueur ne reçoit aucun mot et doit bluffer. S\'il est '
+                  'démasqué, il a une dernière chance : deviner le mot des '
+                  'civils pour gagner quand même !',
+                ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 16),

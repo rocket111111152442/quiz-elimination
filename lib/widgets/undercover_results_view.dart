@@ -83,20 +83,29 @@ class UndercoverResultsView extends StatelessWidget {
                     final isMe = player.uid == highlightUid;
                     final role = roles[player.uid];
                     final isUndercover = role == 'undercover';
+                    final isMisterWhite = role == 'mister_white';
+                    final badgeColor = isUndercover
+                        ? AppColors.danger
+                        : isMisterWhite
+                        ? Colors.amber
+                        : AppColors.success;
+                    final badgeLabel = isUndercover
+                        ? 'Undercover'
+                        : isMisterWhite
+                        ? 'Mister White'
+                        : 'Civil';
+                    final badgeIcon = isUndercover
+                        ? Icons.theater_comedy
+                        : isMisterWhite
+                        ? Icons.help_outline
+                        : Icons.check_circle_outline;
                     return StaggeredFadeIn(
                       delay: Duration(milliseconds: 60 * index),
                       child: ListTile(
                         tileColor: isMe ? AppColors.surface : null,
                         leading: CircleAvatar(
-                          backgroundColor: isUndercover
-                              ? AppColors.danger
-                              : AppColors.success,
-                          child: Icon(
-                            isUndercover
-                                ? Icons.theater_comedy
-                                : Icons.check_circle_outline,
-                            size: 18,
-                          ),
+                          backgroundColor: badgeColor,
+                          child: Icon(badgeIcon, size: 18),
                         ),
                         title: Text(
                           isMe ? '${player.name} (toi)' : player.name,
@@ -105,11 +114,9 @@ class UndercoverResultsView extends StatelessWidget {
                           ),
                         ),
                         trailing: Text(
-                          isUndercover ? 'Undercover' : 'Civil',
+                          badgeLabel,
                           style: TextStyle(
-                            color: isUndercover
-                                ? AppColors.danger
-                                : AppColors.success,
+                            color: badgeColor,
                             fontWeight: FontWeight.bold,
                           ),
                         ),

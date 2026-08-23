@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'create_racing_room_screen.dart';
 import 'create_room_screen.dart';
 import 'create_undercover_room_screen.dart';
 
@@ -35,6 +36,18 @@ class CreateGamePickerScreen extends StatelessWidget {
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => const CreateUndercoverRoomScreen(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _GameCard(
+              emoji: '🏍️',
+              title: 'Course de Motos',
+              subtitle: 'Choisis ta moto et fonce sur la piste, évite le mini-boss et les obstacles !',
+              color: Colors.orangeAccent,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const CreateRacingRoomScreen(),
                 ),
               ),
             ),

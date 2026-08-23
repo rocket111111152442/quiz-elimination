@@ -4,6 +4,7 @@ import '../models/game_type.dart';
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import 'player_lobby_screen.dart';
+import 'racing_player_screen.dart';
 import 'undercover_player_screen.dart';
 
 class JoinRoomScreen extends StatefulWidget {
@@ -49,9 +50,11 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => gameType == GameType.undercover
-              ? UndercoverPlayerScreen(code: code)
-              : PlayerLobbyScreen(code: code),
+          builder: (_) => switch (gameType) {
+            GameType.undercover => UndercoverPlayerScreen(code: code),
+            GameType.racing => RacingPlayerScreen(code: code),
+            GameType.quiz => PlayerLobbyScreen(code: code),
+          },
         ),
       );
     } on RoomNotFoundException {

@@ -25,12 +25,15 @@ class _UndercoverPlayerScreenState extends State<UndercoverPlayerScreen> {
   final _clueController = TextEditingController();
   int? _votedForRound;
   String? _votedFor;
+  final _guessController = TextEditingController();
+  int? _guessSentForRound;
 
   String get _uid => _authService.currentUid!;
 
   @override
   void dispose() {
     _clueController.dispose();
+    _guessController.dispose();
     super.dispose();
   }
 
@@ -56,6 +59,18 @@ class _UndercoverPlayerScreenState extends State<UndercoverPlayerScreen> {
       uid: _uid,
       roundIndex: roundIndex,
       votedFor: votedFor,
+    );
+  }
+
+  Future<void> _sendGuess(int roundIndex) async {
+    final text = _guessController.text.trim();
+    if (text.isEmpty) return;
+    setState(() => _guessSentForRound = roundIndex);
+    await _roomService.submitMisterWhiteGuess(
+      code: widget.code,
+      uid: _uid,
+      roundIndex: roundIndex,
+      guess: text,
     );
   }
 
@@ -109,6 +124,14 @@ class _UndercoverPlayerScreenState extends State<UndercoverPlayerScreen> {
                           ? _votedFor
                           : null,
                       onVote: (votedFor) => _vote(room.roundIndex, votedFor),
+                    );
+                  case UndercoverStatus.misterWhiteGuess:
+                    return _MisterWhiteGuessView(
+                      room: room,
+                      me: me,
+                      guessController: _guessController,
+                      guessSent: _guessSentForRound == room.roundIndex,
+                      onSend: () => _sendGuess(room.roundIndex),
                     );
                   case UndercoverStatus.reveal:
                     return _RevealView(room: room, players: players);
@@ -171,8 +194,10 @@ class _ClueView extends StatelessWidget {
           StreamBuilder<Map<String, dynamic>?>(
             stream: roomService.mySecretStream(code, uid),
             builder: (context, snap) {
+              final role = snap.data?['role'] as String?;
               final word = snap.data?['word'] as String?;
-              if (word == null) return const SizedBox.shrink();
+              if (role == null) return const SizedBox.shrink();
+              final isMisterWhite = role == 'mister_white';
               return Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,
@@ -181,18 +206,26 @@ class _ClueView extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppColors.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.primary, width: 2),
+                  border: Border.all(
+                    color: isMisterWhite ? Colors.amber : AppColors.primary,
+                    width: 2,
+                  ),
                 ),
                 child: Column(
                   children: [
-                    const Text(
-                      'Ton mot secret',
-                      style: TextStyle(color: Colors.white70),
+                    Text(
+                      isMisterWhite
+                          ? '🎩 Tu es Mister White'
+                          : 'Ton mot secret',
+                      style: const TextStyle(color: Colors.white70),
                     ),
                     Text(
-                      word,
-                      style: const TextStyle(
-                        fontSize: 24,
+                      isMisterWhite
+                          ? 'Tu n\'as pas de mot ! Bluffe grâce aux indices des autres.'
+                          : (word ?? ''),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: isMisterWhite ? 15 : 24,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -361,6 +394,85 @@ class _VotingView extends StatelessWidget {
   }
 }
 
+class _MisterWhiteGuessView extends StatelessWidget {
+  final UndercoverRoom room;
+  final Player? me;
+  final TextEditingController guessController;
+  final bool guessSent;
+  final VoidCallback onSend;
+
+  const _MisterWhiteGuessView({
+    required this.room,
+    required this.me,
+    required this.guessController,
+    required this.guessSent,
+    required this.onSend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isMisterWhite = me?.uid == room.eliminatedThisRound;
+    if (!isMisterWhite) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            '🎩 Mister White a été démasqué...\nIl a une dernière chance de deviner le mot des civils !',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 18, color: Colors.white70),
+          ),
+        ),
+      );
+    }
+    if (guessSent) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Devinette envoyée !\nOn regarde si t\'as gagné...',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 18),
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text(
+            '🎩 Tu es démasqué, mais il te reste une chance !',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Devine le mot des civils pour gagner la partie.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: guessController,
+            textAlign: TextAlign.center,
+            decoration: const InputDecoration(hintText: 'Ta réponse...'),
+            onSubmitted: (_) => onSend(),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: onSend,
+              child: const Text('Valider ma devinette'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RevealView extends StatelessWidget {
   final UndercoverRoom room;
   final List<Player> players;
@@ -402,10 +514,16 @@ class _RevealView extends StatelessWidget {
               '🎉 Les civils gagnent !',
               style: TextStyle(fontSize: 20, color: AppColors.success),
             )
-          else if (room.winner == 'undercover')
+          else if (room.winner == 'imposteurs')
             const Text(
-              '🕵️ Les Undercover gagnent !',
+              '🕵️ Les imposteurs gagnent !',
               style: TextStyle(fontSize: 20, color: AppColors.danger),
+            )
+          else if (room.winner == 'mister_white')
+            const Text(
+              '🎩 Mister White a deviné le mot et gagne la partie !',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 20, color: Colors.amber),
             )
           else
             const Text(
