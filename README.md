@@ -177,21 +177,22 @@ fond (par exemple un morceau généré avec Suno) :
 ## 5. Publicités (AdMob)
 
 Une bannière discrète s'affiche sur l'écran de résultats (jamais pendant
-une question, pour ne pas gêner le jeu). Le projet utilise pour l'instant
-les **ID de test officiels de Google** (`lib/services/ad_service.dart` et
-`android/app/src/main/AndroidManifest.xml`) : ça fonctionne déjà tel quel
-en développement, mais ne rapporte pas d'argent réel.
+une question, pour ne pas gêner le jeu). Le projet utilise les **vrais ID
+AdMob** de production (`lib/services/ad_service.dart` et
+`android/app/src/main/AndroidManifest.xml`) — les pubs affichées sont
+réelles, pas des pubs de test.
 
-Pour passer en production :
-1. Crée un compte [Google AdMob](https://admob.google.com) (gratuit).
-2. Crée une appli AdMob puis une unité publicitaire "Bannière".
-3. Remplace `bannerAdUnitId` dans `lib/services/ad_service.dart` et
-   `com.google.android.gms.ads.APPLICATION_ID` dans
-   `android/app/src/main/AndroidManifest.xml` par tes vrais ID.
-4. Dans la Play Console, déclare l'audience de l'appli (probablement des
-   mineurs si c'est pour une classe) — cela active automatiquement les
-   règles Google adaptées (pas de publicité personnalisée pour les
-   mineurs, etc.). Voir la [politique familles de Google Play](https://support.google.com/googleplay/android-developer/answer/9893335).
+À ne pas oublier avant de publier : dans la Play Console, déclare
+l'audience de l'appli (probablement des mineurs si c'est pour une classe)
+— cela active automatiquement les règles Google adaptées (pas de
+publicité personnalisée pour les mineurs, etc.). Voir la
+[politique familles de Google Play](https://support.google.com/googleplay/android-developer/answer/9893335).
+
+Revenus à attendre avec une audience de classe (quelques dizaines
+d'élèves) : quasiment rien — une bannière rapporte en général 0,50 à 2 €
+pour 1000 affichages, et Google ne verse l'argent qu'à partir de 100 €
+cumulés sur le compte AdMob. Les vraies pubs sont surtout là pour de vrai,
+pas comme source de revenu significative à cette échelle.
 
 ## 6. Paiements et idées de monétisation
 

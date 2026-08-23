@@ -31,12 +31,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- ID de test officiel Google AdMob (voir lib/services/ad_service.dart).
-             À remplacer par ton propre ID d'appli une fois ton compte AdMob créé :
-             https://support.google.com/admob/answer/3052638 -->
+        <!-- ID d'appli AdMob réel (voir lib/services/ad_service.dart pour
+             l'ID d'unité publicitaire bannière associé). -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/>
+            android:value="ca-app-pub-1873691727255458~4590008891"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
