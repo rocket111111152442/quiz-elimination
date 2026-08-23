@@ -9,14 +9,14 @@ service cloud.firestore {
                     && request.resource.data.hostUid == request.auth.uid;
 
       // Seul l'hôte peut faire avancer le quiz et l'Undercover. Pour le
-      // Loup-Garou, la partie a beaucoup plus de phases automatiques
-      // (tours de nuit, votes, chaînes de réactions) qu'il serait
-      // fastidieux de faire cliquer à un hôte-spectateur — n'importe quel
-      // joueur de la salle peut donc faire avancer une partie de
-      // Loup-Garou, exactement comme il peut déjà tout lire dans la salle.
+      // Loup-Garou et l'UNO, la partie avance à travers l'appareil de
+      // chaque joueur à son tour (nuits, votes, tours de jeu...) plutôt
+      // que par un hôte-spectateur qui cliquerait à la place des autres —
+      // n'importe quel joueur de la salle peut donc faire avancer ces
+      // deux jeux, exactement comme il peut déjà tout lire dans la salle.
       allow update: if request.auth != null && (
         resource.data.hostUid == request.auth.uid
-        || (resource.data.gameType == 'werewolf' &&
+        || ((resource.data.gameType == 'werewolf' || resource.data.gameType == 'uno') &&
             exists(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid)))
       );
 
@@ -54,6 +54,7 @@ service cloud.firestore {
       // Voyante (qui peut regarder n'importe quelle carte pendant la
       // partie — l'appli ne lui montre qu'une seule à la fois, une par
       // nuit).
+      // UNO : main de cartes de chaque joueur, jamais visible des autres.
       match /secrets/{uid} {
         allow read: if request.auth != null && (
           request.auth.uid == uid
@@ -73,8 +74,16 @@ service cloud.firestore {
              )
         );
 
-        allow write: if request.auth != null
-                     && get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid;
+        allow write: if request.auth != null && (
+          get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid
+          // UNO : celui qui pioche pour lui-même, ou qui fait piocher un
+          // autre joueur suite à un +2/+4/pénalité "UNO !" oublié, écrit
+          // directement dans la main visée depuis son propre appareil.
+          || (
+               get(/databases/$(database)/documents/rooms/$(roomCode)).data.gameType == 'uno'
+               && exists(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid))
+             )
+        );
       }
 
       // Undercover : les deux mots de la manche (civil / undercover).

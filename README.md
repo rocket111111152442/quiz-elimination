@@ -170,6 +170,34 @@ sens (chacun ne peut voter que pour l'autre, donc c'est toujours à
 bloquer la partie. Pour une vraie partie équilibrée, mieux vaut viser au
 moins 5-6 joueurs.
 
+### UNO
+
+Comme le Loup-Garou, l'hôte joue aussi — un jeu de cartes est plus marrant
+si tout le monde est autour de la table.
+
+1. L'hôte choisit **UNO** et indique son pseudo — il rejoint
+   automatiquement la partie en tant que joueur.
+2. Les élèves rejoignent avec le code. **Démarre la partie** (2 joueurs
+   minimum) : chacun reçoit 7 cartes, la première carte de la pioche est
+   retournée pour lancer la défausse (avec son effet appliqué si c'est
+   une carte spéciale, comme dans le vrai jeu).
+3. Le vrai paquet de 108 cartes est utilisé : 4 couleurs (rouge, jaune,
+   vert, bleu) avec pour chacune un 0, deux de chaque chiffre 1 à 9, deux
+   Passe ton tour, deux Sens inverse, deux +2 — plus 4 Joker et 4 Joker +4.
+4. À son tour, chaque joueur pose une carte qui correspond à la couleur
+   ou à la valeur de la carte du dessus (ou un Joker, toujours jouable),
+   ou pioche une carte s'il ne peut/veut pas jouer — et peut alors la
+   jouer immédiatement si elle est valable, sinon il passe son tour.
+5. Passe ton tour, Sens inverse et +2 fonctionnent comme dans le vrai
+   jeu (à 2 joueurs, Sens inverse agit comme Passe ton tour). Les Jokers
+   permettent de choisir la couleur active ; le Joker +4 fait en plus
+   piocher 4 cartes au joueur suivant.
+6. Quand il ne reste qu'une carte en main, le bouton **UNO !** apparaît :
+   il faut le presser avant qu'un autre joueur ne clique sur **"Je t'ai
+   eu !"**, sinon deux cartes de pénalité sont piochées.
+7. Le premier qui vide sa main gagne. Bouton **Quitter la partie** sur
+   l'écran final pour revenir à l'accueil.
+
 ## 4. Son et musique
 
 Quatre petits effets sonores (validation, erreur, décompte, démarrage de
@@ -255,22 +283,23 @@ continuer à jouer.
 lib/
   data/         # question_bank.dart (~190 questions), word_bank.dart
                 # (100 paires de mots Undercover), werewolf_roles.dart
-                # (les cartes du Loup-Garou)
+                # (les cartes du Loup-Garou), uno_cards.dart (le paquet
+                # de 108 cartes UNO)
   models/       # Question, Room, Player, GameType, UndercoverRoom,
-                # WerewolfRoom
-  services/     # AuthService, RoomService (Firestore, les 3 mini-jeux),
+                # WerewolfRoom, UnoRoom
+  services/     # AuthService, RoomService (Firestore, les 4 mini-jeux),
                 # SoundService, AdService
   screens/      # Home, choix du mini-jeu, création/rejoindre salle,
-                # banque de questions, écrans hôte/joueur des 3 mini-jeux
+                # banque de questions, écrans hôte/joueur des 4 mini-jeux
   widgets/      # Boutons de réponse, minuteur, liste de joueurs, résultats
-                # des mini-jeux, bannière publicitaire
+                # des mini-jeux, carte UNO, bannière publicitaire
 assets/sfx/     # Effets sonores (générés, libres de droits)
 assets/music/   # Ta musique de fond (à ajouter toi-même, voir section 4)
 firestore.rules # Règles de sécurité (l'hôte contrôle le quiz et
-                # l'Undercover ; au Loup-Garou, vu le nombre de phases
-                # automatiques, n'importe quel joueur de la salle peut
-                # faire avancer la partie — chacun reste limité à ce que
-                # l'appli lui montre à l'écran)
+                # l'Undercover ; au Loup-Garou et à l'UNO, vu le nombre
+                # de tours/phases automatiques, n'importe quel joueur de
+                # la salle peut faire avancer la partie — chacun reste
+                # limité à ce que l'appli lui montre à l'écran)
 ```
 
 D'autres mini-jeux viendront s'ajouter au même menu de choix à l'avenir —

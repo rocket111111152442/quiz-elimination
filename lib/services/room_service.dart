@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../data/uno_cards.dart';
 import '../data/werewolf_roles.dart';
 import '../data/word_bank.dart';
 import '../models/game_type.dart';
@@ -9,6 +10,7 @@ import '../models/player.dart';
 import '../models/question.dart';
 import '../models/room.dart';
 import '../models/undercover_room.dart';
+import '../models/uno_room.dart';
 import '../models/werewolf_room.dart';
 
 class RoomNotFoundException implements Exception {}
@@ -1333,6 +1335,333 @@ class RoomService {
         .map(
           (snap) => {
             for (final d in snap.docs) d.id: d.data()['votedFor'] as String,
+          },
+        );
+  }
+
+  // ---------------------------------------------------------------------
+  // UNO
+  // ---------------------------------------------------------------------
+
+  int _unoNextIndex(int current, int direction, int playerCount) =>
+      (current + direction + playerCount) % playerCount;
+
+  Future<List<String>> _drawUnoCards(String code, int count) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data()!;
+    var deckOrder = List<String>.from(data['deckOrder'] as List);
+    var drawIndex = (data['drawIndex'] as num).toInt();
+    if (drawIndex + count > deckOrder.length) {
+      final fresh = buildFullUnoDeck()..shuffle();
+      deckOrder = [...deckOrder, ...fresh.map((c) => c.code)];
+    }
+    final drawn = deckOrder.sublist(drawIndex, drawIndex + count);
+    drawIndex += count;
+    await roomRef.update({'deckOrder': deckOrder, 'drawIndex': drawIndex});
+    return drawn;
+  }
+
+  Future<void> _giveUnoCards(
+    String code,
+    String uid,
+    List<String> cards,
+  ) async {
+    final handRef = _roomDoc(code).collection('secrets').doc(uid);
+    final handSnap = await handRef.get();
+    final hand = List<String>.from(handSnap.data()?['hand'] as List? ?? []);
+    await handRef.update({
+      'hand': [...hand, ...cards],
+    });
+  }
+
+  /// Creates the room AND immediately joins the creator as a player — UNO
+  /// is a game everyone plays together, no spectator narrator needed.
+  Future<String> createUnoRoom({
+    required String hostUid,
+    required String hostName,
+  }) async {
+    final code = await _findAvailableCode();
+    await _roomDoc(code).set({
+      'hostUid': hostUid,
+      'gameType': GameType.uno.name,
+      'status': UnoStatus.lobby.name,
+      'playerOrder': <String>[],
+      'currentPlayerIndex': 0,
+      'direction': 1,
+      'topCardCode': '',
+      'currentColor': 'red',
+      'deckOrder': <String>[],
+      'drawIndex': 0,
+      'unoCallUid': null,
+      'unoCalled': false,
+      'hasDrawnThisTurn': false,
+      'winner': null,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    await _playersCol(code).doc(hostUid).set({
+      'name': hostName,
+      'alive': true,
+      'eliminatedAtQuestion': null,
+      'answers': <String, int>{},
+      'joinedAt': FieldValue.serverTimestamp(),
+    });
+    return code;
+  }
+
+  /// Deals 7 cards to everyone and flips the first discard card, applying
+  /// its effect if it's a special card, exactly like a real UNO deal.
+  Future<void> startUnoGame(String code) async {
+    final playersSnap = await _playersCol(code).get();
+    final uids = playersSnap.docs.map((d) => d.id).toList()..shuffle();
+    if (uids.length < 2) {
+      throw StateError('Il faut au moins 2 joueurs.');
+    }
+
+    final deck = buildFullUnoDeck()..shuffle();
+    final deckCodes = deck.map((c) => c.code).toList();
+
+    var cursor = 0;
+    final hands = <String, List<String>>{};
+    for (final uid in uids) {
+      hands[uid] = deckCodes.sublist(cursor, cursor + 7);
+      cursor += 7;
+    }
+
+    var startCard = UnoCard.fromCode(deckCodes[cursor]);
+    var attempts = 0;
+    while (startCard.value == 'wildDrawFour' &&
+        attempts < deckCodes.length - cursor) {
+      final movedCard = deckCodes.removeAt(cursor);
+      deckCodes.add(movedCard);
+      startCard = UnoCard.fromCode(deckCodes[cursor]);
+      attempts++;
+    }
+    cursor++;
+
+    final currentColor = startCard.isWild
+        ? (['red', 'yellow', 'green', 'blue']..shuffle()).first
+        : startCard.color.name;
+    var direction = 1;
+    var currentIndex = 0;
+
+    if (startCard.value == 'skip') {
+      currentIndex = 1;
+    } else if (startCard.value == 'reverse') {
+      if (uids.length > 2) direction = -1;
+      currentIndex = 0;
+    } else if (startCard.value == 'drawTwo') {
+      final victim = uids[0];
+      hands[victim] = [
+        ...hands[victim]!,
+        deckCodes[cursor],
+        deckCodes[cursor + 1],
+      ];
+      cursor += 2;
+      currentIndex = 1;
+    }
+
+    final batch = _db.batch();
+    for (final uid in uids) {
+      batch.set(_roomDoc(code).collection('secrets').doc(uid), {
+        'hand': hands[uid],
+      });
+    }
+    batch.update(_roomDoc(code), {
+      'status': UnoStatus.playing.name,
+      'playerOrder': uids,
+      'currentPlayerIndex': currentIndex,
+      'direction': direction,
+      'topCardCode': startCard.code,
+      'currentColor': currentColor,
+      'deckOrder': deckCodes,
+      'drawIndex': cursor,
+      'unoCallUid': null,
+      'unoCalled': false,
+      'hasDrawnThisTurn': false,
+      'winner': null,
+    });
+    await batch.commit();
+  }
+
+  Future<void> playUnoCard({
+    required String code,
+    required String uid,
+    required String cardCode,
+    String? chosenColor,
+  }) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data()!;
+    if (data['status'] != UnoStatus.playing.name) return;
+    final playerOrder = List<String>.from(data['playerOrder'] as List);
+    final currentIndex = (data['currentPlayerIndex'] as num).toInt();
+    if (playerOrder[currentIndex] != uid) return;
+
+    final handRef = roomRef.collection('secrets').doc(uid);
+    final handSnap = await handRef.get();
+    final hand = List<String>.from(handSnap.data()?['hand'] as List? ?? []);
+    if (!hand.contains(cardCode)) return;
+
+    final card = UnoCard.fromCode(cardCode);
+    final topValue = UnoCard.fromCode(data['topCardCode'] as String).value;
+    final activeColor = data['currentColor'] as String;
+    if (!isUnoCardPlayable(card, activeColor, topValue)) return;
+
+    hand.remove(cardCode);
+    await handRef.update({'hand': hand});
+
+    final newColor = card.isWild
+        ? (chosenColor ?? activeColor)
+        : card.color.name;
+
+    if (hand.isEmpty) {
+      await roomRef.update({
+        'status': UnoStatus.finished.name,
+        'winner': uid,
+        'topCardCode': cardCode,
+        'currentColor': newColor,
+        'unoCallUid': null,
+        'unoCalled': false,
+      });
+      return;
+    }
+
+    var direction = (data['direction'] as num).toInt();
+    var nextIndex = _unoNextIndex(currentIndex, direction, playerOrder.length);
+    final pendingUnoUid = data['unoCallUid'] as String?;
+    String? forcedDrawVictim;
+
+    if (card.value == 'skip') {
+      nextIndex = _unoNextIndex(nextIndex, direction, playerOrder.length);
+    } else if (card.value == 'reverse') {
+      if (playerOrder.length == 2) {
+        nextIndex = currentIndex;
+      } else {
+        direction = -direction;
+        nextIndex = _unoNextIndex(currentIndex, direction, playerOrder.length);
+      }
+    } else if (card.value == 'drawTwo') {
+      forcedDrawVictim = playerOrder[nextIndex];
+      await _giveUnoCards(code, forcedDrawVictim, await _drawUnoCards(code, 2));
+      nextIndex = _unoNextIndex(nextIndex, direction, playerOrder.length);
+    } else if (card.value == 'wildDrawFour') {
+      forcedDrawVictim = playerOrder[nextIndex];
+      await _giveUnoCards(code, forcedDrawVictim, await _drawUnoCards(code, 4));
+      nextIndex = _unoNextIndex(nextIndex, direction, playerOrder.length);
+    }
+
+    final updates = <String, dynamic>{
+      'topCardCode': cardCode,
+      'currentColor': newColor,
+      'direction': direction,
+      'currentPlayerIndex': nextIndex,
+      'hasDrawnThisTurn': false,
+    };
+    if (hand.length == 1) {
+      updates['unoCallUid'] = uid;
+      updates['unoCalled'] = false;
+    } else if (pendingUnoUid == uid || pendingUnoUid == forcedDrawVictim) {
+      // Le joueur qui devait dire "UNO !" a reçu d'autres cartes entre
+      // temps (forcé de piocher par un +2/+4) : il n'est plus à 1 carte.
+      updates['unoCallUid'] = null;
+      updates['unoCalled'] = false;
+    }
+    await roomRef.update(updates);
+  }
+
+  /// Draws one card into the current player's hand without ending their
+  /// turn — they may then play it (if playable) or [passUnoTurn]. Only
+  /// one voluntary draw is allowed per turn, like the real game.
+  Future<void> drawUnoCard({required String code, required String uid}) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data()!;
+    if (data['status'] != UnoStatus.playing.name) return;
+    final playerOrder = List<String>.from(data['playerOrder'] as List);
+    final currentIndex = (data['currentPlayerIndex'] as num).toInt();
+    if (playerOrder[currentIndex] != uid) return;
+    if (data['hasDrawnThisTurn'] == true) return;
+
+    await _giveUnoCards(code, uid, await _drawUnoCards(code, 1));
+    await roomRef.update({'hasDrawnThisTurn': true});
+
+    if (data['unoCallUid'] == uid) {
+      await roomRef.update({'unoCallUid': null, 'unoCalled': false});
+    }
+  }
+
+  Future<void> passUnoTurn({required String code, required String uid}) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data()!;
+    if (data['status'] != UnoStatus.playing.name) return;
+    final playerOrder = List<String>.from(data['playerOrder'] as List);
+    final currentIndex = (data['currentPlayerIndex'] as num).toInt();
+    if (playerOrder[currentIndex] != uid) return;
+    final direction = (data['direction'] as num).toInt();
+    final nextIndex = _unoNextIndex(
+      currentIndex,
+      direction,
+      playerOrder.length,
+    );
+    await roomRef.update({
+      'currentPlayerIndex': nextIndex,
+      'hasDrawnThisTurn': false,
+    });
+  }
+
+  Future<void> declareUno({required String code, required String uid}) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data()!;
+    if (data['unoCallUid'] != uid) return;
+    await roomRef.update({'unoCalled': true});
+  }
+
+  /// Any other player can catch someone who forgot to declare "UNO !"
+  /// after playing down to their last card — they draw 2 as a penalty.
+  Future<void> catchUnoFailure({
+    required String code,
+    required String targetUid,
+  }) async {
+    final roomRef = _roomDoc(code);
+    final caught = await _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(roomRef);
+      final data = snap.data()!;
+      if (data['unoCallUid'] != targetUid || data['unoCalled'] == true) {
+        return false;
+      }
+      tx.update(roomRef, {'unoCallUid': null, 'unoCalled': false});
+      return true;
+    });
+    if (caught) {
+      await _giveUnoCards(code, targetUid, await _drawUnoCards(code, 2));
+    }
+  }
+
+  Stream<UnoRoom?> unoRoomStream(String code) {
+    return _roomDoc(code).snapshots().map(
+      (snap) => snap.exists ? UnoRoom.fromMap(code, snap.data()!) : null,
+    );
+  }
+
+  Stream<List<String>> myUnoHandStream(String code, String uid) {
+    return _roomDoc(code)
+        .collection('secrets')
+        .doc(uid)
+        .snapshots()
+        .map((s) => List<String>.from(s.data()?['hand'] as List? ?? []));
+  }
+
+  Stream<Map<String, int>> unoHandCountsStream(String code) {
+    return _roomDoc(code)
+        .collection('secrets')
+        .snapshots()
+        .map(
+          (snap) => {
+            for (final d in snap.docs)
+              d.id: (List<String>.from(d.data()['hand'] as List? ?? [])).length,
           },
         );
   }

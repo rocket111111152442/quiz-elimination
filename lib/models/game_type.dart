@@ -1,4 +1,4 @@
-enum GameType { quiz, undercover, werewolf }
+enum GameType { quiz, undercover, werewolf, uno }
 
 GameType gameTypeFromString(String? value) {
   return GameType.values.firstWhere(

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import 'create_room_screen.dart';
 import 'create_undercover_room_screen.dart';
+import 'create_uno_room_screen.dart';
 import 'create_werewolf_room_screen.dart';
 
 /// Lets the host choose which mini-jeu to host before creating a room.
@@ -49,6 +50,16 @@ class CreateGamePickerScreen extends StatelessWidget {
                 MaterialPageRoute(
                   builder: (_) => const CreateWerewolfRoomScreen(),
                 ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _GameCard(
+              emoji: '🃏',
+              title: 'UNO',
+              subtitle: 'Le vrai jeu de cartes, toutes les cartes, tout le monde joue en même temps !',
+              color: Colors.redAccent,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CreateUnoRoomScreen()),
               ),
             ),
           ],
