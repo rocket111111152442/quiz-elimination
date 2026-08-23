@@ -9,6 +9,9 @@ const currencyEmoji = '✨';
 /// were in that game — the bigger the room you beat, the more you earn.
 const pointsPerPlayerOnWin = 10;
 
+/// Points earned for watching a rewarded ad all the way through.
+const pointsPerAdWatched = 10;
+
 class ShopAvatar {
   final String emoji;
   final int cost;

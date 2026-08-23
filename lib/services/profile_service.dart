@@ -2,6 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/player_profile.dart';
 
+/// Minimum time between two ad-reward credits — mostly a safety net
+/// against a double-fired reward callback, not a serious anti-abuse cap
+/// (watching another full ad already costs real time).
+const adRewardCooldown = Duration(seconds: 20);
+
 class ProfileService {
   // Lazy on purpose, same reasoning as AuthService._auth.
   FirebaseFirestore get _db => FirebaseFirestore.instance;
@@ -21,6 +26,7 @@ class ProfileService {
       'unlockedColors': <String>[],
       'selectedAvatar': null,
       'selectedColor': null,
+      'lastAdRewardAt': null,
     });
   }
 
@@ -82,6 +88,27 @@ class ProfileService {
       tx.update(ref, {
         'points': points - cost,
         field: [...unlocked, itemId],
+      });
+      return true;
+    });
+  }
+
+  /// Credits [amount] points for watching a rewarded ad, on the viewer's
+  /// own device — self-write, so this needs no special Firestore rule.
+  /// Returns false without crediting anything if called again inside the
+  /// cooldown window (guards against a double-fired reward callback).
+  Future<bool> awardAdReward(String uid, int amount) async {
+    final ref = _doc(uid);
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(ref);
+      final data = snap.data() ?? {};
+      final last = (data['lastAdRewardAt'] as Timestamp?)?.toDate();
+      if (last != null && DateTime.now().difference(last) < adRewardCooldown) {
+        return false;
+      }
+      tx.update(ref, {
+        'points': ((data['points'] as num?)?.toInt() ?? 0) + amount,
+        'lastAdRewardAt': FieldValue.serverTimestamp(),
       });
       return true;
     });

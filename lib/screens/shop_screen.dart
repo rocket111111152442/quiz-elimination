@@ -3,6 +3,7 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 
 import '../data/shop_items.dart';
 import '../models/player_profile.dart';
+import '../services/ad_service.dart';
 import '../services/auth_service.dart';
 import '../services/iap_service.dart';
 import '../services/profile_service.dart';
@@ -23,6 +24,7 @@ class _ShopScreenState extends State<ShopScreen> {
   bool _iapAvailable = false;
   List<ProductDetails> _products = [];
   final Set<String> _purchasing = {};
+  bool _watchingAd = false;
 
   @override
   void initState() {
@@ -56,6 +58,35 @@ class _ShopScreenState extends State<ShopScreen> {
   void dispose() {
     _iapService.dispose();
     super.dispose();
+  }
+
+  Future<void> _watchAd(String uid) async {
+    if (_watchingAd) return;
+    setState(() => _watchingAd = true);
+    try {
+      final earned = await AdService.showRewardedAd();
+      if (!earned) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Pas de pub disponible pour le moment, réessaie.'),
+            ),
+          );
+        }
+        return;
+      }
+      final credited = await _profileService.awardAdReward(
+        uid,
+        pointsPerAdWatched,
+      );
+      if (credited && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('+$pointsPerAdWatched $currencyName !')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _watchingAd = false);
+    }
   }
 
   Future<void> _buyPack(ProductDetails product) async {
@@ -209,6 +240,28 @@ class _ShopScreenState extends State<ShopScreen> {
                         onTap: () => _tapColor(uid, profile, item),
                       ),
                   ],
+                ),
+                const SizedBox(height: 28),
+                const Text(
+                  'Gagner des Étincelles gratuitement',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _watchingAd ? null : () => _watchAd(uid),
+                    icon: _watchingAd
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.play_circle_outline),
+                    label: Text(
+                      'Regarder une pub (+$pointsPerAdWatched $currencyName)',
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 28),
                 const Text(
