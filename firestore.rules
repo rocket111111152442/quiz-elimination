@@ -36,11 +36,13 @@ service cloud.firestore {
           // ...l'hôte seul peut changer alive / eliminatedAtQuestion (élimination, quiz/Undercover)...
           (get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid)
           ||
-          // ...au Loup-Garou, n'importe quel joueur de la salle peut
-          // éliminer n'importe quel autre joueur (résolution d'une nuit,
-          // d'un vote ou d'une vengeance de Chasseur se fait sur
-          // l'appareil de celui qui déclenche la résolution).
-          (get(/databases/$(database)/documents/rooms/$(roomCode)).data.gameType == 'werewolf' &&
+          // ...au Loup-Garou et à l'UNO, n'importe quel joueur de la salle
+          // peut éliminer n'importe quel autre joueur (résolution d'une
+          // nuit/d'un vote/d'une vengeance de Chasseur, ou élimination
+          // pour inactivité, se fait sur l'appareil de celui qui
+          // déclenche la résolution).
+          ((get(/databases/$(database)/documents/rooms/$(roomCode)).data.gameType == 'werewolf' ||
+            get(/databases/$(database)/documents/rooms/$(roomCode)).data.gameType == 'uno') &&
            exists(/databases/$(database)/documents/rooms/$(roomCode)/players/$(request.auth.uid)) &&
            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['alive', 'eliminatedAtQuestion']))
         );

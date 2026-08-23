@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 enum UnoStatus { lobby, playing, finished }
 
 UnoStatus unoStatusFromString(String value) {
@@ -22,6 +24,7 @@ class UnoRoom {
   final bool unoCalled;
   final bool hasDrawnThisTurn;
   final String? winner;
+  final Timestamp? turnStartedAt;
 
   const UnoRoom({
     required this.code,
@@ -38,6 +41,7 @@ class UnoRoom {
     required this.unoCalled,
     required this.hasDrawnThisTurn,
     this.winner,
+    this.turnStartedAt,
   });
 
   String? get currentTurnUid =>
@@ -63,5 +67,6 @@ class UnoRoom {
     unoCalled: map['unoCalled'] as bool? ?? false,
     hasDrawnThisTurn: map['hasDrawnThisTurn'] as bool? ?? false,
     winner: map['winner'] as String?,
+    turnStartedAt: map['turnStartedAt'] as Timestamp?,
   );
 }

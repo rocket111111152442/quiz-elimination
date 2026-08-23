@@ -1718,6 +1718,7 @@ class RoomService {
       'unoCalled': false,
       'hasDrawnThisTurn': false,
       'winner': null,
+      'turnStartedAt': FieldValue.serverTimestamp(),
     });
     await batch.commit();
   }
@@ -1795,6 +1796,7 @@ class RoomService {
       'direction': direction,
       'currentPlayerIndex': nextIndex,
       'hasDrawnThisTurn': false,
+      'turnStartedAt': FieldValue.serverTimestamp(),
     };
     if (hand.length == 1) {
       updates['unoCallUid'] = uid;
@@ -1822,7 +1824,10 @@ class RoomService {
     if (data['hasDrawnThisTurn'] == true) return;
 
     await _giveUnoCards(code, uid, await _drawUnoCards(code, 1));
-    await roomRef.update({'hasDrawnThisTurn': true});
+    await roomRef.update({
+      'hasDrawnThisTurn': true,
+      'turnStartedAt': FieldValue.serverTimestamp(),
+    });
 
     if (data['unoCallUid'] == uid) {
       await roomRef.update({'unoCallUid': null, 'unoCalled': false});
@@ -1846,6 +1851,64 @@ class RoomService {
     await roomRef.update({
       'currentPlayerIndex': nextIndex,
       'hasDrawnThisTurn': false,
+      'turnStartedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Called when the small inactivity badge expires. Any joined client can
+  /// trigger this. [expectedTurnStartedAt] is the timestamp the badge was
+  /// counting down from — if the turn has already moved on by the time
+  /// this runs (another player's device got there first), it's a no-op.
+  /// The AFK player is removed from the game outright; if that leaves a
+  /// single player standing, they win immediately (covers the 1v1 case).
+  Future<void> resolveUnoInactivity(
+    String code,
+    DateTime expectedTurnStartedAt,
+  ) async {
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final data = roomSnap.data();
+    if (data == null || data['status'] != UnoStatus.playing.name) return;
+    final currentTurnStartedAt = (data['turnStartedAt'] as Timestamp?)
+        ?.toDate();
+    if (currentTurnStartedAt == null ||
+        currentTurnStartedAt != expectedTurnStartedAt) {
+      return;
+    }
+
+    final playerOrder = List<String>.from(data['playerOrder'] as List);
+    final currentIndex = (data['currentPlayerIndex'] as num).toInt();
+    if (currentIndex < 0 || currentIndex >= playerOrder.length) return;
+    final inactiveUid = playerOrder[currentIndex];
+
+    await _playersCol(code)
+        .doc(inactiveUid)
+        .update({'alive': false, 'eliminatedAtQuestion': 0});
+
+    final remaining = [...playerOrder]..remove(inactiveUid);
+    if (remaining.length == 1) {
+      await roomRef.update({
+        'status': UnoStatus.finished.name,
+        'winner': remaining.first,
+        'playerOrder': remaining,
+      });
+      return;
+    }
+
+    final direction = (data['direction'] as num).toInt();
+    final targetIndexBefore = _unoNextIndex(
+      currentIndex,
+      direction,
+      playerOrder.length,
+    );
+    final targetUid = playerOrder[targetIndexBefore];
+    final nextIndex = remaining.indexOf(targetUid);
+
+    await roomRef.update({
+      'playerOrder': remaining,
+      'currentPlayerIndex': nextIndex,
+      'hasDrawnThisTurn': false,
+      'turnStartedAt': FieldValue.serverTimestamp(),
     });
   }
 

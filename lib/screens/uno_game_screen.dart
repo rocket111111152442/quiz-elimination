@@ -6,6 +6,7 @@ import '../models/uno_room.dart';
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import '../theme.dart';
+import '../widgets/inactivity_badge.dart';
 import '../widgets/player_list_tile.dart';
 import '../widgets/room_qr_code.dart';
 import '../widgets/uno_card_widget.dart';
@@ -254,9 +255,36 @@ class _PlayingView extends StatelessWidget {
     final topCard = room.topCardCode.isEmpty
         ? null
         : UnoCard.fromCode(room.topCardCode);
+    final me = players.where((p) => p.uid == uid).firstOrNull;
+    final eliminated = me != null && !me.alive;
+
+    if (eliminated) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            '💀 Tu as été retiré pour inactivité.\n'
+            'Regarde la suite de la partie !',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 20, color: Colors.white70),
+          ),
+        ),
+      );
+    }
 
     return Column(
       children: [
+        if (room.turnStartedAt != null)
+          Align(
+            alignment: Alignment.centerRight,
+            child: InactivityBadge(
+              since: room.turnStartedAt!.toDate(),
+              onExpired: () => roomService.resolveUnoInactivity(
+                code,
+                room.turnStartedAt!.toDate(),
+              ),
+            ),
+          ),
         const SizedBox(height: 8),
         StreamBuilder<Map<String, int>>(
           stream: roomService.unoHandCountsStream(code),
