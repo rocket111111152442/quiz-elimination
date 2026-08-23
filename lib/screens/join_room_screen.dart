@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../models/game_type.dart';
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import 'player_lobby_screen.dart';
+import 'undercover_player_screen.dart';
 
 class JoinRoomScreen extends StatefulWidget {
   const JoinRoomScreen({super.key});
@@ -39,10 +41,18 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
     });
     try {
       final uid = await _authService.ensureSignedIn();
-      await _roomService.joinRoom(code: code, uid: uid, name: name);
+      final gameType = await _roomService.joinRoom(
+        code: code,
+        uid: uid,
+        name: name,
+      );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => PlayerLobbyScreen(code: code)),
+        MaterialPageRoute(
+          builder: (_) => gameType == GameType.undercover
+              ? UndercoverPlayerScreen(code: code)
+              : PlayerLobbyScreen(code: code),
+        ),
       );
     } on RoomNotFoundException {
       setState(() => _error = 'Aucune partie avec ce code.');

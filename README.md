@@ -56,7 +56,14 @@ affiché côté hôte).
 
 ## 3. Comment fonctionne une partie
 
-1. L'hôte appuie sur **Créer une partie**, ajoute ses questions (texte, 4
+Depuis l'accueil, **Créer une partie** ouvre d'abord un choix de mini-jeu
+(Quiz Élimination ou Undercover, d'autres viendront s'ajouter à cette liste
+plus tard). Chaque mini-jeu a son propre code de salle : les joueurs qui
+rejoignent avec ce code atterrissent directement dans le bon jeu.
+
+### Quiz Élimination
+
+1. L'hôte choisit **Quiz Élimination**, ajoute ses questions (texte, 4
    réponses, la bonne réponse, un temps limite), puis **Lance la salle**.
 2. Un code à 5 caractères s'affiche. Les élèves le saisissent dans
    **Rejoindre une partie** avec leur pseudo.
@@ -76,6 +83,35 @@ culture générale, géographie, histoire, sciences, sport, cinéma, séries,
 musique, jeux vidéo, nature & animaux) — les deux se mélangent librement
 dans la même salle, et chaque question ajoutée reste modifiable ou
 supprimable avant de lancer la partie.
+
+### Undercover
+
+Un mot est distribué à tout le monde en secret, sauf à un (ou plusieurs)
+joueur·se **Undercover** qui reçoit un mot proche mais différent (ex. Civils
+= « Pizza », Undercover = « Burger »). Personne ne sait qui a quel mot.
+
+1. L'hôte choisit **Undercover**, sélectionne une catégorie de mots (ou
+   « Aléatoire ») et le nombre d'Undercover, puis **Crée la salle**.
+2. Les élèves rejoignent avec le code, comme pour le quiz.
+3. L'hôte **Démarre la partie** (il faut au moins 3 joueurs). Chacun reçoit
+   son mot secret sur son écran.
+4. À chaque manche, les joueurs parlent chacun leur tour (l'ordre s'affiche
+   à l'écran) et tapent **un seul mot** qui décrit leur mot secret sans le
+   révéler directement. Tous les indices restent affichés, visibles de
+   tout le monde. L'hôte appuie sur **Joueur suivant** après chaque tour.
+5. Une fois tous les indices donnés, tout le monde **vote** en même temps
+   pour désigner qui est, selon lui, l'Undercover. L'hôte appuie sur **Voir
+   le résultat du vote** : le joueur avec le plus de votes est éliminé (en
+   cas d'égalité, personne n'est éliminé ce tour-ci).
+6. La partie continue en manches jusqu'à ce que tous les Undercover soient
+   démasqués (victoire des civils) ou qu'ils soient à égalité ou en
+   supériorité numérique face aux civils restants (victoire des
+   Undercover). L'écran final révèle les deux mots et le rôle de chacun.
+
+La banque de mots intégrée (`lib/data/word_bank.dart`) contient 100 paires
+de mots réparties en 10 catégories (nourriture, animaux, lieux, sports,
+technologie, métiers, transports, objets du quotidien, nature, loisirs) —
+pour en ajouter, il suffit d'ajouter des `WordPair(...)` dans ce fichier.
 
 ## 4. Son et musique
 
@@ -159,15 +195,22 @@ continuer à jouer.
 
 ```
 lib/
-  data/         # question_bank.dart — les ~190 questions prêtes à l'emploi
-  models/       # Question, Room, Player (structures de données)
-  services/     # AuthService, RoomService (Firestore), SoundService, AdService
-  screens/      # Home, création/rejoindre salle, banque de questions,
-                # écrans hôte/joueur
-  widgets/      # Boutons de réponse, minuteur, liste de joueurs, résultats,
-                # bannière publicitaire
+  data/         # question_bank.dart (~190 questions), word_bank.dart
+                # (100 paires de mots Undercover)
+  models/       # Question, Room, Player, GameType, UndercoverRoom
+  services/     # AuthService, RoomService (Firestore, quiz + Undercover),
+                # SoundService, AdService
+  screens/      # Home, choix du mini-jeu, création/rejoindre salle,
+                # banque de questions, écrans hôte/joueur (quiz + Undercover)
+  widgets/      # Boutons de réponse, minuteur, liste de joueurs, résultats
+                # (quiz + Undercover), bannière publicitaire
 assets/sfx/     # Effets sonores (générés, libres de droits)
 assets/music/   # Ta musique de fond (à ajouter toi-même, voir section 4)
-firestore.rules # Règles de sécurité (seul l'hôte contrôle la partie,
-                # chaque joueur ne peut écrire que sa propre réponse)
+firestore.rules # Règles de sécurité (l'hôte contrôle la partie, chaque
+                # joueur ne peut écrire que sa propre réponse / son propre
+                # indice / son propre vote)
 ```
+
+D'autres mini-jeux viendront s'ajouter au même menu de choix à l'avenir
+(par exemple une course de moto/kart multijoueur) — chacun aura son propre
+écran hôte/joueur, exactement comme le Quiz et l'Undercover.

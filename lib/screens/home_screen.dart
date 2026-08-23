@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/sound_service.dart';
 import '../theme.dart';
-import 'create_room_screen.dart';
+import 'create_game_picker_screen.dart';
 import 'join_room_screen.dart';
 import 'settings_screen.dart';
 
@@ -57,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: ElevatedButton.icon(
                         onPressed: () => Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => const CreateRoomScreen(),
+                            builder: (_) => const CreateGamePickerScreen(),
                           ),
                         ),
                         icon: const Icon(Icons.add_circle_outline),

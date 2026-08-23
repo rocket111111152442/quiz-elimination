@@ -8,7 +8,7 @@ service cloud.firestore {
       allow create: if request.auth != null
                     && request.resource.data.hostUid == request.auth.uid;
 
-      // Seul l'hôte peut faire avancer la partie (questions, statut...).
+      // Seul l'hôte peut faire avancer la partie (questions, statut, tours...).
       allow update: if request.auth != null
                     && resource.data.hostUid == request.auth.uid;
 
@@ -21,7 +21,7 @@ service cloud.firestore {
         allow create: if request.auth != null && request.auth.uid == playerId;
 
         allow update: if request.auth != null && (
-          // Un joueur ne peut modifier que ses propres réponses...
+          // Un joueur ne peut modifier que ses propres réponses (quiz)...
           (request.auth.uid == playerId &&
            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers']))
           ||
@@ -30,6 +30,49 @@ service cloud.firestore {
         );
 
         allow delete: if false;
+      }
+
+      // Undercover : mot secret + rôle de chaque joueur, invisible des
+      // autres joueurs tant que la partie n'est pas terminée.
+      match /secrets/{uid} {
+        allow read: if request.auth != null && (
+          request.auth.uid == uid
+          || get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid
+          || get(/databases/$(database)/documents/rooms/$(roomCode)).data.status == 'finished'
+        );
+
+        allow write: if request.auth != null
+                     && get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid;
+      }
+
+      // Undercover : les deux mots de la manche (civil / undercover).
+      match /meta/{docId} {
+        allow read: if request.auth != null && (
+          get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid
+          || get(/databases/$(database)/documents/rooms/$(roomCode)).data.status == 'finished'
+        );
+
+        allow write: if request.auth != null
+                     && get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostUid == request.auth.uid;
+      }
+
+      // Undercover : indices et votes d'une manche, chaque joueur n'écrit
+      // que sa propre entrée mais tout le monde peut tout lire (indices
+      // visibles de tous, comme en vrai autour de la table).
+      match /rounds/{roundIndex} {
+        match /clues/{uid} {
+          allow read: if request.auth != null;
+          allow create: if request.auth != null && request.auth.uid == uid;
+          allow update: if false;
+          allow delete: if false;
+        }
+
+        match /votes/{uid} {
+          allow read: if request.auth != null;
+          allow create: if request.auth != null && request.auth.uid == uid;
+          allow update: if false;
+          allow delete: if false;
+        }
       }
     }
   }
