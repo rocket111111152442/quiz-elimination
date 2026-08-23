@@ -7,11 +7,14 @@ import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Sur Android, google-services.json déclenche déjà une initialisation
-  // native de Firebase ; réappeler initializeApp() planterait avec
-  // "[core/duplicate-app]" si on ne vérifie pas d'abord.
-  if (Firebase.apps.isEmpty) {
+  try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } on FirebaseException catch (e) {
+    // Sur Android, google-services.json déclenche déjà une initialisation
+    // native de Firebase avant que Dart ne démarre ; Firebase.apps ne le
+    // reflète pas encore à ce stade, donc on intercepte l'erreur plutôt
+    // que de vérifier apps.isEmpty au préalable.
+    if (e.code != 'duplicate-app') rethrow;
   }
   runApp(const QuizEliminationApp());
 }
