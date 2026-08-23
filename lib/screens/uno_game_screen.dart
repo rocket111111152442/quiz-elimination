@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import '../theme.dart';
 import '../widgets/player_list_tile.dart';
+import '../widgets/room_qr_code.dart';
 import '../widgets/uno_card_widget.dart';
 
 extension _FirstOrNull<T> on Iterable<T> {
@@ -146,7 +147,8 @@ class _LobbyView extends StatelessWidget {
             letterSpacing: 8,
           ),
         ),
-        const SizedBox(height: 16),
+        if (isHost) ...[const SizedBox(height: 12), RoomQrCode(code: code)],
+        const SizedBox(height: 12),
         Text('${players.length} joueur(s) connecté(s)'),
         Expanded(
           child: ListView(

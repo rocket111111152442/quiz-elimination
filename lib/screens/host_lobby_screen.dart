@@ -7,8 +7,10 @@ import '../models/room.dart';
 import '../services/room_service.dart';
 import '../services/sound_service.dart';
 import '../theme.dart';
+import '../widgets/countdown_timer.dart';
 import '../widgets/player_list_tile.dart';
 import '../widgets/results_view.dart';
+import '../widgets/room_qr_code.dart';
 
 /// Single reactive screen driving the whole game for the host: lobby,
 /// question, reveal and final results, all derived from the room's
@@ -141,7 +143,9 @@ class _LobbyView extends StatelessWidget {
             letterSpacing: 8,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+        RoomQrCode(code: code),
+        const SizedBox(height: 12),
         Text('${players.length} joueur(s) connecté(s)'),
         Expanded(
           child: ListView(
@@ -183,6 +187,7 @@ class _QuestionView extends StatelessWidget {
     final answered = alive
         .where((p) => p.answerFor(room.currentQuestionIndex) != null)
         .length;
+    final startedAt = room.questionStartedAt?.toDate();
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -191,6 +196,15 @@ class _QuestionView extends StatelessWidget {
             'Question ${room.currentQuestionIndex + 1} / ${room.questions.length}',
             style: const TextStyle(color: Colors.white70),
           ),
+          const SizedBox(height: 12),
+          if (startedAt != null)
+            CountdownTimer(
+              startedAt: startedAt,
+              durationSeconds: question.timeLimitSeconds,
+              // Le temps de réponse écoulé déclenche automatiquement la
+              // révélation, même si l'hôte ne fait rien.
+              onExpired: loading ? null : onReveal,
+            ),
           const SizedBox(height: 12),
           Text(
             question.text,

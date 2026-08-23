@@ -6,6 +6,7 @@ import '../services/room_service.dart';
 import '../services/sound_service.dart';
 import '../theme.dart';
 import '../widgets/player_list_tile.dart';
+import '../widgets/room_qr_code.dart';
 import '../widgets/undercover_results_view.dart';
 
 /// Single reactive screen driving the whole Undercover game for the host
@@ -162,7 +163,9 @@ class _LobbyView extends StatelessWidget {
             letterSpacing: 8,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+        RoomQrCode(code: code),
+        const SizedBox(height: 12),
         Text('${players.length} joueur(s) connecté(s)'),
         if (players.length < 3)
           const Padding(

@@ -4,19 +4,24 @@ import '../models/game_type.dart';
 import '../services/auth_service.dart';
 import '../services/room_service.dart';
 import 'player_lobby_screen.dart';
+import 'qr_scan_screen.dart';
 import 'undercover_player_screen.dart';
 import 'uno_game_screen.dart';
 import 'werewolf_game_screen.dart';
 
 class JoinRoomScreen extends StatefulWidget {
-  const JoinRoomScreen({super.key});
+  final String? initialCode;
+
+  const JoinRoomScreen({super.key, this.initialCode});
 
   @override
   State<JoinRoomScreen> createState() => _JoinRoomScreenState();
 }
 
 class _JoinRoomScreenState extends State<JoinRoomScreen> {
-  final _codeController = TextEditingController();
+  late final _codeController = TextEditingController(
+    text: widget.initialCode ?? '',
+  );
   final _nameController = TextEditingController();
   final _roomService = RoomService();
   final _authService = AuthService();
@@ -28,6 +33,14 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
     _codeController.dispose();
     _nameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _scanQrCode() async {
+    final code = await Navigator.of(context)
+        .push<String>(MaterialPageRoute(builder: (_) => const QrScanScreen()));
+    if (code != null && mounted) {
+      setState(() => _codeController.text = code);
+    }
   }
 
   Future<void> _join() async {
@@ -84,6 +97,12 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Code de la partie',
                 ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _loading ? null : _scanQrCode,
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('Scanner un QR code'),
               ),
               const SizedBox(height: 16),
               TextField(

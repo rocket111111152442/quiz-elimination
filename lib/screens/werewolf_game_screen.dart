@@ -8,6 +8,7 @@ import '../services/room_service.dart';
 import '../theme.dart';
 import '../widgets/banner_ad_widget.dart';
 import '../widgets/player_list_tile.dart';
+import '../widgets/room_qr_code.dart';
 import '../widgets/staggered_fade_in.dart';
 
 extension _FirstOrNull<T> on Iterable<T> {
@@ -216,6 +217,10 @@ class _LobbyViewState extends State<_LobbyView> {
             letterSpacing: 8,
           ),
         ),
+        if (widget.isHost) ...[
+          const SizedBox(height: 12),
+          RoomQrCode(code: widget.code),
+        ],
         const SizedBox(height: 8),
         Text('${widget.players.length} joueur(s) connecté(s)'),
         Expanded(
