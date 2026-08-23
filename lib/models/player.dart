@@ -4,6 +4,8 @@ class Player {
   final bool alive;
   final int? eliminatedAtQuestion;
   final Map<int, int> answers;
+  final String? avatar;
+  final String? colorHex;
 
   const Player({
     required this.uid,
@@ -11,6 +13,8 @@ class Player {
     required this.alive,
     this.eliminatedAtQuestion,
     this.answers = const {},
+    this.avatar,
+    this.colorHex,
   });
 
   int? answerFor(int questionIndex) => answers[questionIndex];
@@ -25,6 +29,8 @@ class Player {
       answers: rawAnswers.map(
         (key, value) => MapEntry(int.parse(key), (value as num).toInt()),
       ),
+      avatar: map['avatar'] as String?,
+      colorHex: map['colorHex'] as String?,
     );
   }
 }

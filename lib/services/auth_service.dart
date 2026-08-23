@@ -1,7 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  // Lazy on purpose: a plain field initializer would call
+  // FirebaseAuth.instance as soon as AuthService() is constructed, which
+  // throws if Firebase hasn't been initialized yet (e.g. widget tests).
+  FirebaseAuth get _auth => FirebaseAuth.instance;
 
   Future<String> ensureSignedIn() async {
     final current = _auth.currentUser;

@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../data/shop_items.dart';
 import '../data/uno_cards.dart';
 import '../data/werewolf_roles.dart';
 import '../data/word_bank.dart';
@@ -12,6 +13,7 @@ import '../models/room.dart';
 import '../models/undercover_room.dart';
 import '../models/uno_room.dart';
 import '../models/werewolf_room.dart';
+import 'profile_service.dart';
 
 class RoomNotFoundException implements Exception {}
 
@@ -31,6 +33,7 @@ extension _FirstWhereOrNull<T> on Iterable<T> {
 
 class RoomService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final ProfileService _profileService = ProfileService();
 
   static const _codeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   static const _codeLength = 5;
@@ -80,6 +83,17 @@ class RoomService {
     return code;
   }
 
+  /// The shop avatar/name color the player picked, if any — stamped onto
+  /// their player doc at join time so every other device can show it
+  /// without needing to read that uid's (otherwise unrelated) profile.
+  Future<Map<String, dynamic>> _cosmeticFields(String uid) async {
+    final profile = await _profileService.getProfile(uid);
+    return {
+      if (profile.selectedAvatar != null) 'avatar': profile.selectedAvatar,
+      if (profile.selectedColor != null) 'colorHex': profile.selectedColor,
+    };
+  }
+
   Future<GameType> joinRoom({
     required String code,
     required String uid,
@@ -93,6 +107,7 @@ class RoomService {
       'eliminatedAtQuestion': null,
       'answers': <String, int>{},
       'joinedAt': FieldValue.serverTimestamp(),
+      ...await _cosmeticFields(uid),
     }, SetOptions(merge: true));
     return gameTypeFromString(roomSnap.data()?['gameType'] as String?);
   }
@@ -162,7 +177,16 @@ class RoomService {
   }
 
   Future<void> finishGame(String code) async {
+    final playersSnap = await _playersCol(code).get();
+    final totalPlayers = playersSnap.docs.length;
+    final winners = playersSnap.docs
+        .where((d) => Player.fromMap(d.id, d.data()).alive)
+        .map((d) => d.id);
     await _roomDoc(code).update({'status': RoomStatus.finished.name});
+    await _profileService.awardPointsToAll(
+      winners,
+      pointsPerPlayerOnWin * totalPlayers,
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -523,7 +547,29 @@ class RoomService {
   }
 
   Future<void> finishUndercoverGame(String code) async {
-    await _roomDoc(code).update({'status': UndercoverStatus.finished.name});
+    final roomRef = _roomDoc(code);
+    final roomSnap = await roomRef.get();
+    final winner = roomSnap.data()?['winner'] as String?;
+    if (winner != null) {
+      final secretsSnap = await roomRef.collection('secrets').get();
+      final totalPlayers = secretsSnap.docs.length;
+      final winners = secretsSnap.docs
+          .where((d) {
+            final role = d.data()['role'] as String?;
+            return switch (winner) {
+              'civils' => role == 'civil',
+              'imposteurs' => role == 'undercover' || role == 'mister_white',
+              'mister_white' => role == 'mister_white',
+              _ => false,
+            };
+          })
+          .map((d) => d.id);
+      await _profileService.awardPointsToAll(
+        winners,
+        pointsPerPlayerOnWin * totalPlayers,
+      );
+    }
+    await roomRef.update({'status': UndercoverStatus.finished.name});
   }
 
   Stream<UndercoverRoom?> undercoverRoomStream(String code) {
@@ -652,6 +698,33 @@ class RoomService {
     return null;
   }
 
+  /// Credits every surviving member of the winning side with shop points,
+  /// scaled by how many players were in the game — a bigger room is worth
+  /// more.
+  Future<void> _awardWerewolfWinPoints(String code, String winner) async {
+    final secretsSnap = await _roomDoc(code).collection('secrets').get();
+    final totalPlayers = secretsSnap.docs.length;
+    final roleByUid = {
+      for (final d in secretsSnap.docs) d.id: d.data()['role'] as String,
+    };
+    final playersSnap = await _playersCol(code).get();
+    final aliveUids = {
+      for (final d in playersSnap.docs)
+        if (Player.fromMap(d.id, d.data()).alive) d.id,
+    };
+
+    final winners = winner == 'loups'
+        ? aliveUids.where((u) => roleByUid[u] == 'loupGarou')
+        : winner == 'amoureux'
+        ? aliveUids
+        : aliveUids.where((u) => roleByUid[u] != 'loupGarou');
+
+    await _profileService.awardPointsToAll(
+      winners,
+      pointsPerPlayerOnWin * totalPlayers,
+    );
+  }
+
   /// Creates the room AND immediately joins the creator as a player — in
   /// Loup-Garou the "hôte" also plays, they just have a couple of extra
   /// narrator buttons (open the vote, close it) that other players don't.
@@ -696,6 +769,7 @@ class RoomService {
       'eliminatedAtQuestion': null,
       'answers': <String, int>{},
       'joinedAt': FieldValue.serverTimestamp(),
+      ...await _cosmeticFields(hostUid),
     });
     return code;
   }
@@ -1053,6 +1127,7 @@ class RoomService {
         'status': WerewolfStatus.finished.name,
         'winner': winner,
       });
+      await _awardWerewolfWinPoints(code, winner);
       return;
     }
 
@@ -1131,6 +1206,7 @@ class RoomService {
         'winner': winner,
         'pendingActorUid': null,
       });
+      await _awardWerewolfWinPoints(code, winner);
       return;
     }
 
@@ -1320,6 +1396,7 @@ class RoomService {
         'status': WerewolfStatus.finished.name,
         'winner': winner,
       });
+      await _awardWerewolfWinPoints(code, winner);
       return;
     }
 
@@ -1533,6 +1610,7 @@ class RoomService {
         'status': WerewolfStatus.finished.name,
         'winner': winner,
       });
+      await _awardWerewolfWinPoints(code, winner);
       return true;
     }
     return false;
@@ -1643,6 +1721,7 @@ class RoomService {
       'eliminatedAtQuestion': null,
       'answers': <String, int>{},
       'joinedAt': FieldValue.serverTimestamp(),
+      ...await _cosmeticFields(hostUid),
     });
     return code;
   }
@@ -1763,6 +1842,11 @@ class RoomService {
         'unoCallUid': null,
         'unoCalled': false,
       });
+      final totalPlayers = (await _playersCol(code).get()).docs.length;
+      await _profileService.awardPoints(
+        uid,
+        pointsPerPlayerOnWin * totalPlayers,
+      );
       return;
     }
 
@@ -1892,6 +1976,11 @@ class RoomService {
         'winner': remaining.first,
         'playerOrder': remaining,
       });
+      final totalPlayers = (await _playersCol(code).get()).docs.length;
+      await _profileService.awardPoints(
+        remaining.first,
+        pointsPerPlayerOnWin * totalPlayers,
+      );
       return;
     }
 
