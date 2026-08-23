@@ -9,7 +9,7 @@ plugins {
 android {
     namespace = "com.classe.quizelimination.quiz_elimination"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Pas de code natif (C/C++) dans ce projet, donc pas besoin du NDK.
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
