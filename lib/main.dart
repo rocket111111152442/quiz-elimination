@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'firebase_options.dart';
 import 'screens/home_screen.dart';
 import 'services/ad_service.dart';
+import 'services/sound_service.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -20,6 +21,7 @@ Future<void> main() async {
     if (e.code != 'duplicate-app') rethrow;
   }
   await AdService.initialize();
+  await SoundService.instance.loadPreferences();
   runApp(const QuizEliminationApp());
 }
 

@@ -4,7 +4,7 @@ import '../theme.dart';
 
 enum AnswerButtonState { neutral, selected, correct, wrong }
 
-class AnswerButton extends StatelessWidget {
+class AnswerButton extends StatefulWidget {
   final String text;
   final int index;
   final AnswerButtonState state;
@@ -19,36 +19,57 @@ class AnswerButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final baseColor =
-        AppColors.answerColors[index % AppColors.answerColors.length];
-    Color color;
-    switch (state) {
-      case AnswerButtonState.correct:
-        color = AppColors.success;
-        break;
-      case AnswerButtonState.wrong:
-        color = AppColors.danger;
-        break;
-      case AnswerButtonState.selected:
-        color = baseColor.withValues(alpha: 0.6);
-        break;
-      case AnswerButtonState.neutral:
-        color = baseColor;
-        break;
-    }
+  State<AnswerButton> createState() => _AnswerButtonState();
+}
 
-    return Material(
-      color: color,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Container(
+class _AnswerButtonState extends State<AnswerButton> {
+  bool _pressed = false;
+
+  Color get _color {
+    final baseColor =
+        AppColors.answerColors[widget.index % AppColors.answerColors.length];
+    switch (widget.state) {
+      case AnswerButtonState.correct:
+        return AppColors.success;
+      case AnswerButtonState.wrong:
+        return AppColors.danger;
+      case AnswerButtonState.selected:
+        return baseColor.withValues(alpha: 0.6);
+      case AnswerButtonState.neutral:
+        return baseColor;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _color;
+    final enabled = widget.onTap != null;
+
+    return GestureDetector(
+      onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+      onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
+      onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.95 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
           alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.5),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
           child: Text(
-            text,
+            widget.text,
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,

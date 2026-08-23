@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/player.dart';
 import '../theme.dart';
 import 'banner_ad_widget.dart';
+import 'staggered_fade_in.dart';
 
 /// Shared final leaderboard, used by both the host and player screens so
 /// the ranking logic only lives in one place.
@@ -31,9 +32,16 @@ class ResultsView extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          const Text(
-            '🏆 Résultats',
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: const Duration(milliseconds: 600),
+            curve: Curves.elasticOut,
+            builder: (context, t, child) =>
+                Transform.scale(scale: t, child: child),
+            child: const Text(
+              '🏆 Résultats',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+            ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -52,19 +60,24 @@ class ResultsView extends StatelessWidget {
               itemBuilder: (context, index) {
                 final player = ranked[index];
                 final isMe = player.uid == highlightUid;
-                return ListTile(
-                  tileColor: isMe ? AppColors.surface : null,
-                  leading: CircleAvatar(
-                    backgroundColor: _medalColor(index) ?? AppColors.surface,
-                    child: Text('${index + 1}'),
+                return StaggeredFadeIn(
+                  delay: Duration(milliseconds: 60 * index),
+                  child: ListTile(
+                    tileColor: isMe ? AppColors.surface : null,
+                    leading: CircleAvatar(
+                      backgroundColor: _medalColor(index) ?? AppColors.surface,
+                      child: Text('${index + 1}'),
+                    ),
+                    title: Text(
+                      isMe ? '${player.name} (toi)' : player.name,
+                      style: TextStyle(
+                        fontWeight: isMe ? FontWeight.bold : null,
+                      ),
+                    ),
+                    trailing: player.alive
+                        ? const Icon(Icons.emoji_events, color: Colors.amber)
+                        : null,
                   ),
-                  title: Text(
-                    isMe ? '${player.name} (toi)' : player.name,
-                    style: TextStyle(fontWeight: isMe ? FontWeight.bold : null),
-                  ),
-                  trailing: player.alive
-                      ? const Icon(Icons.emoji_events, color: Colors.amber)
-                      : null,
                 );
               },
             ),

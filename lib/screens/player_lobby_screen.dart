@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/answer_button.dart';
 import '../widgets/countdown_timer.dart';
 import '../widgets/results_view.dart';
+import '../widgets/staggered_fade_in.dart';
 
 /// Single reactive screen driving the whole game for a player: lobby,
 /// question, reveal and final results, all derived from the room's
@@ -158,13 +159,16 @@ class _QuestionView extends StatelessWidget {
               childAspectRatio: 1.6,
               children: [
                 for (var i = 0; i < question.options.length; i++)
-                  AnswerButton(
-                    text: question.options[i],
-                    index: i,
-                    state: selectedOption == i
-                        ? AnswerButtonState.selected
-                        : AnswerButtonState.neutral,
-                    onTap: hasAnswered ? null : () => onAnswer(i),
+                  StaggeredFadeIn(
+                    delay: Duration(milliseconds: 80 * i),
+                    child: AnswerButton(
+                      text: question.options[i],
+                      index: i,
+                      state: selectedOption == i
+                          ? AnswerButtonState.selected
+                          : AnswerButtonState.neutral,
+                      onTap: hasAnswered ? null : () => onAnswer(i),
+                    ),
                   ),
               ],
             ),
