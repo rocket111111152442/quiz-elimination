@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 
 import '../data/shop_items.dart';
 import '../models/player_profile.dart';
 import '../services/auth_service.dart';
+import '../services/iap_service.dart';
 import '../services/profile_service.dart';
 import '../theme.dart';
 
@@ -16,40 +18,94 @@ class ShopScreen extends StatefulWidget {
 class _ShopScreenState extends State<ShopScreen> {
   final _profileService = ProfileService();
   final _authService = AuthService();
+  final _iapService = IapService();
+  String? _uid;
+  bool _iapAvailable = false;
+  List<ProductDetails> _products = [];
+  final Set<String> _purchasing = {};
 
-  String get _uid => _authService.currentUid!;
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
 
-  Future<void> _tapAvatar(PlayerProfile profile, ShopAvatar item) async {
+  Future<void> _init() async {
+    final uid = await _authService.ensureSignedIn();
+    if (!mounted) return;
+    setState(() => _uid = uid);
+    _iapService.start(uid);
+    try {
+      final available = await _iapService.isAvailable;
+      final products = available
+          ? await _iapService.loadProducts()
+          : <ProductDetails>[];
+      if (mounted) {
+        setState(() {
+          _iapAvailable = available;
+          _products = products;
+        });
+      }
+    } catch (_) {
+      // Play Store indisponible (émulateur, app pas encore publiée...) —
+      // la boutique de cosmétiques reste utilisable normalement.
+    }
+  }
+
+  @override
+  void dispose() {
+    _iapService.dispose();
+    super.dispose();
+  }
+
+  Future<void> _buyPack(ProductDetails product) async {
+    setState(() => _purchasing.add(product.id));
+    try {
+      await _iapService.buy(product);
+    } finally {
+      if (mounted) setState(() => _purchasing.remove(product.id));
+    }
+  }
+
+  Future<void> _tapAvatar(
+    String uid,
+    PlayerProfile profile,
+    ShopAvatar item,
+  ) async {
     final owned = profile.unlockedAvatars.contains(item.emoji);
     if (owned) {
-      await _profileService.selectAvatar(_uid, item.emoji);
+      await _profileService.selectAvatar(uid, item.emoji);
       return;
     }
     final unlocked = await _profileService.unlockAvatar(
-      _uid,
+      uid,
       item.emoji,
       item.cost,
     );
     if (unlocked) {
-      await _profileService.selectAvatar(_uid, item.emoji);
+      await _profileService.selectAvatar(uid, item.emoji);
     } else if (mounted) {
       _showNotEnoughPoints();
     }
   }
 
-  Future<void> _tapColor(PlayerProfile profile, ShopColorOption item) async {
+  Future<void> _tapColor(
+    String uid,
+    PlayerProfile profile,
+    ShopColorOption item,
+  ) async {
     final owned = profile.unlockedColors.contains(item.hex);
     if (owned) {
-      await _profileService.selectColor(_uid, item.hex);
+      await _profileService.selectColor(uid, item.hex);
       return;
     }
     final unlocked = await _profileService.unlockColor(
-      _uid,
+      uid,
       item.hex,
       item.cost,
     );
     if (unlocked) {
-      await _profileService.selectColor(_uid, item.hex);
+      await _profileService.selectColor(uid, item.hex);
     } else if (mounted) {
       _showNotEnoughPoints();
     }
@@ -67,11 +123,18 @@ class _ShopScreenState extends State<ShopScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final uid = _uid;
+    if (uid == null) {
+      return const Scaffold(
+        appBar: null,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Boutique')),
       body: SafeArea(
         child: StreamBuilder<PlayerProfile>(
-          stream: _profileService.profileStream(_uid),
+          stream: _profileService.profileStream(uid),
           builder: (context, snap) {
             final profile = snap.data ?? const PlayerProfile.empty();
             return ListView(
@@ -124,7 +187,7 @@ class _ShopScreenState extends State<ShopScreen> {
                         item: item,
                         owned: profile.unlockedAvatars.contains(item.emoji),
                         selected: profile.selectedAvatar == item.emoji,
-                        onTap: () => _tapAvatar(profile, item),
+                        onTap: () => _tapAvatar(uid, profile, item),
                       ),
                   ],
                 ),
@@ -143,10 +206,51 @@ class _ShopScreenState extends State<ShopScreen> {
                         item: item,
                         owned: profile.unlockedColors.contains(item.hex),
                         selected: profile.selectedColor == item.hex,
-                        onTap: () => _tapColor(profile, item),
+                        onTap: () => _tapColor(uid, profile, item),
                       ),
                   ],
                 ),
+                const SizedBox(height: 28),
+                const Text(
+                  'Acheter des Étincelles',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                if (!_iapAvailable)
+                  const Text(
+                    'Achats indisponibles pour l\'instant (l\'appli doit '
+                    'être publiée sur le Play Store).',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                  )
+                else if (_products.isEmpty)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else
+                  for (final product in _products)
+                    Card(
+                      color: AppColors.surface,
+                      child: ListTile(
+                        title: Text(product.title),
+                        subtitle: Text(product.description),
+                        trailing: _purchasing.contains(product.id)
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : ElevatedButton(
+                                onPressed: () => _buyPack(product),
+                                child: Text(product.price),
+                              ),
+                      ),
+                    ),
               ],
             );
           },

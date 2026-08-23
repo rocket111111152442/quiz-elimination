@@ -230,31 +230,36 @@ pour 1000 affichages, et Google ne verse l'argent qu'à partir de 100 €
 cumulés sur le compte AdMob. Les vraies pubs sont surtout là pour de vrai,
 pas comme source de revenu significative à cette échelle.
 
-## 6. Paiements et idées de monétisation
+## 6. Boutique, points et achats intégrés
 
-Aucun paiement n'est câblé pour l'instant — mieux vaut ça qu'un faux
-bouton "Payer" qui ne marche pas. Le chemin recommandé pour ajouter de
-vrais achats :
+Chaque appareil a une progression persistante (`profiles/{uid}` dans
+Firestore, indexée sur l'uid anonyme stable de Firebase Auth — pas besoin
+d'un vrai compte, ça survit aux redémarrages de l'appli). Gagner une
+partie (n'importe lequel des 4 jeux) rapporte des **Étincelles** :
+10 × le nombre de joueurs qui étaient dans la partie gagnée, à chaque
+gagnant. Elles se dépensent dans la Boutique (accessible depuis l'écran
+d'accueil) contre des avatars emoji et des couleurs de pseudo, affichés
+ensuite à côté du nom du joueur dans toutes les salles.
 
-1. Crée un [compte marchand Google Play](https://support.google.com/googleplay/android-developer/answer/9269274)
-   (nécessite le compte développeur payant de l'étape 7).
-2. Dans la Play Console, crée tes "produits" (achats intégrés) : un ID,
-   un nom, un prix.
-3. Ajoute le package [`in_app_purchase`](https://pub.dev/packages/in_app_purchase)
-   au projet et branche-le sur les ID de produits créés à l'étape 2.
+L'achat d'Étincelles avec de l'argent réel via le Play Store est câblé
+(`lib/services/iap_service.dart`, package
+[`in_app_purchase`](https://pub.dev/packages/in_app_purchase)) mais ne
+peut pas encore fonctionner tant que :
 
-Idées de monétisation adaptées à ce type de jeu, sans rien qui pénalise
-l'expérience de base :
-- **Retirer les pubs** (achat unique) — l'option la plus simple et la
-  mieux perçue.
-- **Packs de questions premium** (par thème, ou questions créées par la
-  communauté) en plus de la banque gratuite déjà incluse.
-- **Thèmes visuels** ou animations de victoire supplémentaires
-  (cosmétique, n'affecte jamais qui gagne).
+1. L'appli n'est pas publiée sur le Play Store (au moins en test interne
+   — voir section 7).
+2. Les produits n'existent pas dans la Play Console (Monétisation >
+   Produits > Achats intégrés), avec des ID **identiques** à ceux de
+   `lib/data/shop_items.dart` (`pointsPacks`) : `etincelles_500`,
+   `etincelles_1500`, `etincelles_5000`. Chaque produit doit être marqué
+   "consommable" (achetable plusieurs fois).
 
-À éviter si le public reste en grande partie mineur : rien qui ressemble
-à une mécanique de type loot box, et aucune pression à payer pour
-continuer à jouer.
+Tant que ces deux conditions ne sont pas remplies, la boutique affiche
+simplement "achats indisponibles" — c'est normal, pas un bug. Il n'y a
+pas de serveur qui vérifie les reçus d'achat : pour une petite appli non
+commerciale de classe c'est un compromis raisonnable, mais ça veut dire
+qu'un appareil trafiqué pourrait en théorie tricher sur ses achats — sans
+gravité ici puisqu'il ne s'agit que de cosmétiques.
 
 ## 7. Publier sur le Google Play Store
 
@@ -284,15 +289,20 @@ lib/
   data/         # question_bank.dart (~190 questions), word_bank.dart
                 # (100 paires de mots Undercover), werewolf_roles.dart
                 # (les cartes du Loup-Garou), uno_cards.dart (le paquet
-                # de 108 cartes UNO)
+                # de 108 cartes UNO), shop_items.dart (avatars/couleurs/
+                # packs de points de la boutique)
   models/       # Question, Room, Player, GameType, UndercoverRoom,
-                # WerewolfRoom, UnoRoom
+                # WerewolfRoom, UnoRoom, PlayerProfile
   services/     # AuthService, RoomService (Firestore, les 4 mini-jeux),
-                # SoundService, AdService
+                # SoundService, AdService, ProfileService (points/
+                # cosmétiques), IapService (achats Play Store)
   screens/      # Home, choix du mini-jeu, création/rejoindre salle,
-                # banque de questions, écrans hôte/joueur des 4 mini-jeux
-  widgets/      # Boutons de réponse, minuteur, liste de joueurs, résultats
-                # des mini-jeux, carte UNO, bannière publicitaire
+                # scan de QR code, banque de questions, boutique, écrans
+                # hôte/joueur des 4 mini-jeux
+  widgets/      # Boutons de réponse, minuteur (grand + badge
+                # d'inactivité), liste de joueurs, résultats des
+                # mini-jeux, carte UNO, QR code de salle, bannière
+                # publicitaire
 assets/sfx/     # Effets sonores (générés, libres de droits)
 assets/music/   # Ta musique de fond (à ajouter toi-même, voir section 4)
 firestore.rules # Règles de sécurité (l'hôte contrôle le quiz et
