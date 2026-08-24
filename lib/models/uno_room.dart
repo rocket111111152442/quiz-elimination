@@ -20,8 +20,6 @@ class UnoRoom {
   final String currentColor;
   final List<String> deckOrder;
   final int drawIndex;
-  final String? unoCallUid;
-  final bool unoCalled;
   final bool hasDrawnThisTurn;
   final String? winner;
   final Timestamp? turnStartedAt;
@@ -37,8 +35,6 @@ class UnoRoom {
     required this.currentColor,
     required this.deckOrder,
     required this.drawIndex,
-    this.unoCallUid,
-    required this.unoCalled,
     required this.hasDrawnThisTurn,
     this.winner,
     this.turnStartedAt,
@@ -63,8 +59,6 @@ class UnoRoom {
     currentColor: map['currentColor'] as String? ?? 'red',
     deckOrder: List<String>.from(map['deckOrder'] as List? ?? []),
     drawIndex: (map['drawIndex'] as num?)?.toInt() ?? 0,
-    unoCallUid: map['unoCallUid'] as String?,
-    unoCalled: map['unoCalled'] as bool? ?? false,
     hasDrawnThisTurn: map['hasDrawnThisTurn'] as bool? ?? false,
     winner: map['winner'] as String?,
     turnStartedAt: map['turnStartedAt'] as Timestamp?,

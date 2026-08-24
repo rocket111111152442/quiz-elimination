@@ -308,21 +308,41 @@ class _PlayingView extends StatelessWidget {
           builder: (context, countsSnap) {
             final counts = countsSnap.data ?? {};
             final others = room.playerOrder.where((u) => u != uid).toList();
-            return Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 12,
-              runSpacing: 4,
+            final unoNames = counts.entries
+                .where((e) => e.value == 1)
+                .map((e) => nameByUid[e.key] ?? '...')
+                .toList();
+            return Column(
               children: [
-                for (final otherUid in others)
-                  Chip(
-                    avatar: CircleAvatar(
-                      backgroundColor: otherUid == room.currentTurnUid
-                          ? AppColors.primary
-                          : AppColors.surface,
-                      child: Text('${counts[otherUid] ?? 0}'),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    for (final otherUid in others)
+                      Chip(
+                        avatar: CircleAvatar(
+                          backgroundColor: otherUid == room.currentTurnUid
+                              ? AppColors.primary
+                              : AppColors.surface,
+                          child: Text('${counts[otherUid] ?? 0}'),
+                        ),
+                        label: Text(nameByUid[otherUid] ?? '...'),
+                      ),
+                  ],
+                ),
+                if (unoNames.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '🃏 ${unoNames.join(' et ')} ${unoNames.length > 1 ? 'ont' : 'a'} UNO !',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.danger,
                     ),
-                    label: Text(nameByUid[otherUid] ?? '...'),
                   ),
+                ],
               ],
             );
           },
@@ -367,36 +387,6 @@ class _PlayingView extends StatelessWidget {
           '${room.cardsLeftInDeck} carte(s) dans la pioche',
           style: const TextStyle(color: Colors.white38, fontSize: 12),
         ),
-        const SizedBox(height: 12),
-        if (room.unoCallUid != null && !room.unoCalled)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: room.unoCallUid == uid
-                ? SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () =>
-                          roomService.declareUno(code: code, uid: uid),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.danger,
-                      ),
-                      child: const Text('🃏 UNO !'),
-                    ),
-                  )
-                : SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () => roomService.catchUnoFailure(
-                        code: code,
-                        targetUid: room.unoCallUid!,
-                      ),
-                      child: Text(
-                        'Je t\'ai eu, ${nameByUid[room.unoCallUid] ?? '...'} '
-                        'n\'a pas dit UNO !',
-                      ),
-                    ),
-                  ),
-          ),
         const Spacer(),
         StreamBuilder<List<String>>(
           stream: roomService.myUnoHandStream(code, uid),
